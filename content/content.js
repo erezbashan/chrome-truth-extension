@@ -29,13 +29,14 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.3',
+      version: '1.0.4',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
       enableSearchGrounding: true,
       autoCheck: true,
-      chunkDurationSec: 210,
+      chunkDurationSec: 900,
+      lookaheadBufferSec: 60,
       lingerDurationSec: 10
     }
   };
@@ -246,7 +247,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.3</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.4</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -317,7 +318,7 @@
       e.stopPropagation();
       STATE.isPaused = !STATE.isPaused;
       if (!STATE.isPaused) {
-        runChunkScheduler(currentRunToken);
+        maybeAnalyzeCurrentWindow(currentRunToken);
       }
       scheduleRender();
     });
@@ -337,7 +338,7 @@
       STATE.isPaused = false;
       STATE.error = null;
       scheduleRender();
-      runChunkScheduler(++currentRunToken);
+      maybeAnalyzeCurrentWindow(++currentRunToken);
     });
 
     // Save API key button inside drawer
@@ -421,11 +422,7 @@
    */
   function getAllClaims() {
     const all = [];
-    const indices = Object.keys(STATE.analyzedChunks)
-      .map(Number)
-      .sort((a, b) => a - b);
-    for (const idx of indices) {
-      const ch = STATE.analyzedChunks[idx];
+    for (const ch of Object.values(STATE.analyzedChunks)) {
       if (ch && Array.isArray(ch.claims)) {
         for (const claim of ch.claims) {
           all.push(claim);
@@ -727,18 +724,25 @@
       }
 
       // Update Right Progress section
+      const currentCov = findCoveringWindow(currentTime);
       if (STATE.isPaused) {
         spinnerEl.style.display = 'none';
-        progressTextEl.textContent = `Paused (${metrics.checkedCount}/${metrics.totalChunks})`;
-      } else if (STATE.isAnalyzing) {
+        progressTextEl.textContent = `Paused`;
+      } else if (STATE.isAnalyzing && STATE.activeWindowRange) {
         spinnerEl.style.display = 'inline-block';
-        progressTextEl.textContent = `Checking ${metrics.checkedCount}/${metrics.totalChunks}`;
-      } else if (metrics.totalChunks > 0 && metrics.checkedCount >= metrics.totalChunks) {
+        progressTextEl.textContent = `Checking ${formatTime(
+          STATE.activeWindowRange.startTime
+        )}–${formatTime(STATE.activeWindowRange.endTime)}`;
+      } else if (currentCov) {
         spinnerEl.style.display = 'none';
-        progressTextEl.textContent = `✓ All ${metrics.totalChunks} chunks checked`;
+        progressTextEl.textContent = `✓ Checked ${formatTime(
+          currentCov.startTime
+        )}–${formatTime(currentCov.endTime)}`;
       } else {
         spinnerEl.style.display = 'none';
-        progressTextEl.textContent = `${metrics.checkedCount}/${metrics.totalChunks} checked`;
+        progressTextEl.textContent = `${metrics.checkedCount} window${
+          metrics.checkedCount === 1 ? '' : 's'
+        } checked`;
       }
     }
 
@@ -846,9 +850,11 @@
       summaryEl,
       `<strong>${
         metrics.relevancePct ?? 0
-      }% of this video</strong> is relevant for fact-checking. Out of <strong>${
+      }% of analyzed content</strong> is relevant for fact-checking. Out of <strong>${
         metrics.totalClaims
-      } claims</strong> checked (${metrics.checkedCount}/${metrics.totalChunks} segments), the accuracy score is <strong>${
+      } claims</strong> checked across ${metrics.checkedCount} window${
+        metrics.checkedCount === 1 ? '' : 's'
+      }, the accuracy score is <strong>${
         metrics.accuracyPct !== null ? `${metrics.accuracyPct}%` : '100%'
       }</strong> (${metrics.trueCount} True, ${metrics.questionableCount} Questionable, ${
         metrics.falseCount
@@ -931,103 +937,173 @@
   }
 
   /**
-   * Playback-First Smart Chunk Scheduler:
-   * Always picks the unanalyzed chunk containing (or closest ahead of) the user's current playback position!
+   * Check if `timeSec` is already covered by an analyzed window
    */
-  function pickNextChunkToAnalyze() {
-    if (!STATE.chunks.length) return null;
-    const currentTime = videoEl ? videoEl.currentTime || 0 : 0;
+  function findCoveringWindow(timeSec) {
+    for (const ch of Object.values(STATE.analyzedChunks)) {
+      if (timeSec >= ch.startTime - 2 && timeSec <= ch.endTime + 2) {
+        return ch;
+      }
+    }
+    return null;
+  }
 
-    // Find the chunk covering currentTime
-    let currentChunkIdx = STATE.chunks.findIndex(
-      (ch) => currentTime >= ch.startTime && currentTime <= ch.endTime
+  /**
+   * Build an on-demand 15-minute window starting at `windowStartSec`
+   * without overlapping any already-analyzed window ahead of it, and never checking backward.
+   */
+  function buildOnDemandWindow(windowStartSec) {
+    if (!Array.isArray(STATE.segments) || STATE.segments.length === 0) return null;
+    const windowDuration = STATE.settings.chunkDurationSec || 900; // 15 minutes default
+    let maxEndSec = windowStartSec + windowDuration;
+
+    // Don't overlap if there is already an analyzed window ahead of windowStartSec
+    for (const ch of Object.values(STATE.analyzedChunks)) {
+      if (ch.startTime > windowStartSec && ch.startTime < maxEndSec) {
+        maxEndSec = ch.startTime;
+      }
+    }
+
+    const windowSegments = STATE.segments.filter(
+      (seg) => seg.end > windowStartSec && seg.start < maxEndSec
     );
-    if (currentChunkIdx === -1) {
-      currentChunkIdx = STATE.chunks.findIndex((ch) => ch.startTime >= currentTime);
-      if (currentChunkIdx === -1) currentChunkIdx = 0;
+    if (windowSegments.length === 0) return null;
+
+    const actualStart = Math.max(0, Math.floor(Math.min(windowStartSec, windowSegments[0].start)));
+    const actualEnd = Math.ceil(windowSegments[windowSegments.length - 1].end);
+    const windowKey = `${actualStart}_${actualEnd}`;
+
+    if (STATE.analyzedChunks[windowKey]) return null;
+
+    return {
+      index: windowKey,
+      startTime: actualStart,
+      endTime: actualEnd,
+      segments: windowSegments
+    };
+  }
+
+  /**
+   * Determine if we need to analyze a window right now based on current playback position:
+   *  - Case A: Current playback position is not inside any analyzed window -> check 15 mins starting from currentTime!
+   *  - Case B: Current playback is within `lookaheadBufferSec` (60s) of the end of the current window -> prefetch next 15 mins!
+   *  - Otherwise: Do NOTHING (zero API calls while watching inside an already-checked 15-min window).
+   */
+  function getNeededWindowAtCurrentTime() {
+    if (!STATE.hasCaptions || !STATE.segments.length) return null;
+    const currentTime = videoEl ? videoEl.currentTime || 0 : 0;
+    const lookahead = STATE.settings.lookaheadBufferSec || 60;
+
+    const covering = findCoveringWindow(currentTime);
+    if (!covering) {
+      return buildOnDemandWindow(currentTime);
     }
 
-    // 1. Check from currentChunkIdx forward to the end of the video
-    for (let i = currentChunkIdx; i < STATE.chunks.length; i++) {
-      if (!STATE.analyzedChunks[i]) {
-        return STATE.chunks[i];
-      }
-    }
-
-    // 2. Wrap around to check any earlier chunks before currentChunkIdx
-    for (let i = 0; i < currentChunkIdx; i++) {
-      if (!STATE.analyzedChunks[i]) {
-        return STATE.chunks[i];
-      }
+    // Only prefetch the next window if the user has watched up to within 60s of the end of the current window
+    const lastVideoSegEnd = STATE.segments[STATE.segments.length - 1].end;
+    if (
+      covering.endTime < lastVideoSegEnd - 5 &&
+      currentTime >= covering.endTime - lookahead &&
+      !findCoveringWindow(covering.endTime + 3)
+    ) {
+      return buildOnDemandWindow(covering.endTime);
     }
 
     return null;
   }
 
-  async function runChunkScheduler(runToken) {
+  /**
+   * Wait until the YouTube <video> element has loaded metadata and settled its initial resume timestamp
+   * (so starting a video in the middle reads the real middle timestamp, not 0:00).
+   */
+  async function waitForInitialPlaybackPosition(runToken) {
+    // Check if URL has explicit ?t= param first
+    try {
+      const urlT = new URL(window.location.href).searchParams.get('t');
+      if (urlT) {
+        const parsedT = parseInt(urlT.replace(/s$/i, ''), 10);
+        if (parsedT > 0 && videoEl && videoEl.currentTime < 2) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    for (let attempt = 0; attempt < 16; attempt++) {
+      if (runToken !== currentRunToken) return;
+      bindVideoListeners();
+      if (videoEl && videoEl.readyState >= 1) {
+        // Give YouTube's player 550ms after metadata is ready to apply saved watch-history resume position
+        await new Promise((r) => setTimeout(r, 550));
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  /**
+   * Analyzes AT MOST ONE 15-minute window needed for the current playback position, then stops.
+   */
+  async function maybeAnalyzeCurrentWindow(runToken) {
     if (runToken !== currentRunToken) return;
-    if (STATE.isPaused || !STATE.hasCaptions || !STATE.isVideoRelevant) {
-      STATE.isAnalyzing = false;
+    if (STATE.isAnalyzing || STATE.isPaused || !STATE.hasCaptions || !STATE.isVideoRelevant) {
+      scheduleRender();
+      return;
+    }
+
+    const neededWindow = getNeededWindowAtCurrentTime();
+    if (!neededWindow) {
       scheduleRender();
       return;
     }
 
     STATE.isAnalyzing = true;
+    STATE.activeWindowRange = {
+      startTime: neededWindow.startTime,
+      endTime: neededWindow.endTime
+    };
     scheduleRender();
 
-    while (runToken === currentRunToken && !STATE.isPaused && STATE.isVideoRelevant) {
-      const nextChunk = pickNextChunkToAnalyze();
-      if (!nextChunk) {
-        break;
+    const isFirstChunk = Object.keys(STATE.analyzedChunks).length === 0;
+    const resp = await chrome.runtime.sendMessage({
+      type: 'ANALYZE_CHUNK',
+      payload: {
+        videoId: STATE.videoId,
+        metadata: STATE.metadata,
+        chunk: neededWindow,
+        isFirstChunk,
+        totalChunks: 1,
+        languageCode: STATE.languageCode
       }
+    });
 
-      const isFirstChunk = Object.keys(STATE.analyzedChunks).length === 0;
-      const resp = await chrome.runtime.sendMessage({
-        type: 'ANALYZE_CHUNK',
-        payload: {
-          videoId: STATE.videoId,
-          metadata: STATE.metadata,
-          chunk: nextChunk,
-          isFirstChunk,
-          totalChunks: STATE.chunks.length,
-          languageCode: STATE.languageCode
-        }
-      });
+    if (runToken !== currentRunToken) return;
 
-      if (runToken !== currentRunToken) return;
+    STATE.isAnalyzing = false;
+    STATE.activeWindowRange = null;
 
-      if (!resp || !resp.ok) {
-        if (resp?.code === 'MISSING_API_KEY') {
-          STATE.missingApiKey = true;
-          STATE.drawerOpen = true;
-        } else {
-          STATE.error = resp?.error || 'Failed to analyze chunk';
-        }
-        STATE.isAnalyzing = false;
-        scheduleRender();
-        return;
-      }
-
-      STATE.missingApiKey = false;
-      STATE.error = null;
-      if (resp.chunkResult) {
-        STATE.analyzedChunks[nextChunk.index] = resp.chunkResult;
-      }
-      if (resp.videoCache) {
-        STATE.isVideoRelevant = resp.videoCache.isVideoRelevant !== false;
-        STATE.irrelevantReason = resp.videoCache.irrelevantReason || '';
+    if (!resp || !resp.ok) {
+      if (resp?.code === 'MISSING_API_KEY') {
+        STATE.missingApiKey = true;
+        STATE.drawerOpen = true;
+      } else {
+        STATE.error = resp?.error || 'Failed to analyze segment';
       }
       scheduleRender();
-
-      if (!STATE.isVideoRelevant) {
-        break;
-      }
+      return;
     }
 
-    if (runToken === currentRunToken) {
-      STATE.isAnalyzing = false;
-      scheduleRender();
+    STATE.missingApiKey = false;
+    STATE.error = null;
+    if (resp.chunkResult) {
+      STATE.analyzedChunks[neededWindow.index] = resp.chunkResult;
     }
+    if (resp.videoCache) {
+      STATE.isVideoRelevant = resp.videoCache.isVideoRelevant !== false;
+      STATE.irrelevantReason = resp.videoCache.irrelevantReason || '';
+    }
+    scheduleRender();
   }
 
   async function refreshSettingsAndMaybeRestart() {
@@ -1040,7 +1116,7 @@
       STATE.settings = cfgResp.settings;
       STATE.missingApiKey = !cfgResp.settings.hasApiKey;
       if (!STATE.missingApiKey && STATE.hasCaptions && !STATE.isAnalyzing) {
-        runChunkScheduler(currentRunToken);
+        maybeAnalyzeCurrentWindow(currentRunToken);
       } else {
         scheduleRender();
       }
@@ -1053,14 +1129,17 @@
       videoEl = v;
       videoEl.addEventListener('timeupdate', () => {
         scheduleRender();
+        if (!STATE.isAnalyzing && !STATE.isPaused && STATE.hasCaptions && STATE.isVideoRelevant) {
+          if (getNeededWindowAtCurrentTime()) {
+            maybeAnalyzeCurrentWindow(currentRunToken);
+          }
+        }
       });
       videoEl.addEventListener('seeked', () => {
         scheduleRender();
-        // If the user sought to an unanalyzed part of the video and scheduler finished or is idle, wake it
         if (!STATE.isAnalyzing && !STATE.isPaused && STATE.hasCaptions && STATE.isVideoRelevant) {
-          const next = pickNextChunkToAnalyze();
-          if (next) {
-            runChunkScheduler(currentRunToken);
+          if (getNeededWindowAtCurrentTime()) {
+            maybeAnalyzeCurrentWindow(currentRunToken);
           }
         }
       });
@@ -1145,21 +1224,19 @@
       return;
     }
 
-    STATE.chunks = buildTranscriptChunks(
-      STATE.segments,
-      STATE.settings.chunkDurationSec || 210
-    );
-
+    STATE.isAnalyzing = false;
     scheduleRender();
 
     if (STATE.missingApiKey) {
-      STATE.isAnalyzing = false;
       scheduleRender();
       return;
     }
 
-    // 3. Start Playback-First Chunk Scheduler in parallel with video playback
-    runChunkScheduler(runToken);
+    // 3. Wait for YouTube's <video> player to settle its initial resume timestamp (e.g. starting mid-video),
+    //    then analyze ONLY the single 15-minute window starting at currentTime!
+    await waitForInitialPlaybackPosition(runToken);
+    if (runToken !== currentRunToken) return;
+    maybeAnalyzeCurrentWindow(runToken);
   }
 
   function checkCurrentPage() {

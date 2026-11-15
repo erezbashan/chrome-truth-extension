@@ -9,7 +9,7 @@
  */
 export const CONFIG = {
   // Extension build version (displayed in GUI per project rules; increment on each build)
-  VERSION: '1.0.3',
+  VERSION: '1.0.4',
 
   // Fallback placeholder if config.local.json or popup override is not present
   GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY_HERE',
@@ -17,9 +17,12 @@ export const CONFIG = {
   // Fast Gemini model used for both Step 1 (Triage) and Step 2 (Google Search Grounding)
   GEMINI_MODEL: 'gemini-3.8-flash',
 
-  // Duration of each transcript chunk in seconds (~3.5 minutes)
-  // Small enough that Gemini extracts EVERY claim in the window rather than summarizing into 4-5 points
-  CHUNK_DURATION_SEC: 210,
+  // Duration of each on-demand transcript window in seconds (15 minutes = 900s)
+  // Large enough to minimize API calls (1 call covers 15 mins from current playback position)
+  CHUNK_DURATION_SEC: 900,
+
+  // Only prefetch the next 15-minute window when playback is within this many seconds of the end of the current window
+  LOOKAHEAD_BUFFER_SEC: 60,
 
   // How many seconds a claim stays highlighted on the live bar after the speaker finishes the sentence
   LINGER_DURATION_SEC: 10,

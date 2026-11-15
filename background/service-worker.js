@@ -40,6 +40,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               enableSearchGrounding: settings.enableSearchGrounding,
               autoCheck: settings.autoCheck,
               chunkDurationSec: CONFIG.CHUNK_DURATION_SEC,
+              lookaheadBufferSec: CONFIG.LOOKAHEAD_BUFFER_SEC,
               lingerDurationSec: settings.lingerDurationSec
             },
             cache
@@ -62,6 +63,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               enableSearchGrounding: effective.enableSearchGrounding,
               autoCheck: effective.autoCheck,
               chunkDurationSec: CONFIG.CHUNK_DURATION_SEC,
+              lookaheadBufferSec: CONFIG.LOOKAHEAD_BUFFER_SEC,
               lingerDurationSec: effective.lingerDurationSec
             }
           });
@@ -297,12 +299,36 @@ async function fetchTranscriptFromServiceWorker(videoId) {
 }
 
 /**
+ * Merge tiny 2-3s caption fragments into ~12s blocks to reduce prompt token overhead by ~45%
+ */
+function formatCompactTranscriptLines(segments) {
+  if (!Array.isArray(segments) || segments.length === 0) return '';
+  const merged = [];
+  let cur = null;
+
+  for (const seg of segments) {
+    if (!cur) {
+      cur = { start: seg.start, end: seg.end, texts: [seg.text] };
+    } else if (seg.end - cur.start <= 12) {
+      cur.end = seg.end;
+      cur.texts.push(seg.text);
+    } else {
+      merged.push(cur);
+      cur = { start: seg.start, end: seg.end, texts: [seg.text] };
+    }
+  }
+  if (cur) merged.push(cur);
+
+  return merged
+    .map((m) => `[${Math.round(m.start)}s-${Math.round(m.end)}s] ${m.texts.join(' ')}`)
+    .join('\n');
+}
+
+/**
  * Step 1: Fast Triage & Exhaustive Claim Extraction (No search tool attached for speed & quota savings)
  */
 async function runStep1Triage({ metadata, chunk, isFirstChunk, languageCode }, settings) {
-  const transcriptLines = chunk.segments
-    .map((seg) => `[${formatSec(seg.start)}] (${seg.start}s - ${seg.end}s): ${seg.text}`)
-    .join('\n');
+  const transcriptLines = formatCompactTranscriptLines(chunk.segments);
 
   const currentYear = new Date().getFullYear();
 
