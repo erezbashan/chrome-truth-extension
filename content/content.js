@@ -29,7 +29,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.1',
+      version: '1.0.2',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-2.5-flash',
@@ -46,6 +46,28 @@
   let pendingRequests = new Map();
   let reqCounter = 0;
   let rafPending = false;
+  let ttPolicy = null;
+
+  /**
+   * Safe HTML setter compatible with YouTube's TrustedTypes CSP
+   */
+  function setSafeHtml(el, html) {
+    if (!el) return;
+    try {
+      if (window.trustedTypes && window.trustedTypes.createPolicy) {
+        if (!ttPolicy) {
+          ttPolicy = window.trustedTypes.createPolicy('ytTruthBarPolicy', {
+            createHTML: (s) => s
+          });
+        }
+        el.innerHTML = ttPolicy.createHTML(html);
+        return;
+      }
+    } catch {
+      // Fallback below if policy creation is restricted
+    }
+    el.innerHTML = html;
+  }
 
   // Listen for responses from page-bridge.js (MAIN world)
   window.addEventListener('YT_TRUTH_VIDEO_DATA_RESULT', (event) => {
@@ -197,7 +219,7 @@
     const container = document.createElement('div');
     container.id = 'yt-truth-root';
 
-    container.innerHTML = `
+    setSafeHtml(container, `
       <div class="yt-truth-bar state-idle" id="yt-truth-bar">
         <div class="yt-truth-bar-main">
           <div class="yt-truth-grade-section" id="yt-truth-grade-section">
@@ -224,7 +246,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.1</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.2</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -269,7 +291,7 @@
 
         <div class="yt-truth-claims-list" id="yt-truth-claims-list" dir="auto"></div>
       </div>
-    `;
+    `);
 
     // Toggle drawer when clicking the bar
     const barEl = container.querySelector('#yt-truth-bar');
@@ -568,7 +590,7 @@
       relevancePill.textContent = 'Setup Needed';
       scoreValEl.textContent = 'API Key';
       scoreValEl.className = 'yt-truth-score-value score-mid';
-      countersEl.innerHTML = '';
+      setSafeHtml(countersEl, '');
       verdictBadge.style.display = 'none';
       liveTimeEl.style.display = 'none';
       liveClaimEl.textContent =
@@ -588,7 +610,7 @@
       relevancePill.textContent = 'Fact Check: N/A';
       scoreValEl.textContent = 'No CC';
       scoreValEl.className = 'yt-truth-score-value';
-      countersEl.innerHTML = '';
+      setSafeHtml(countersEl, '');
       verdictBadge.style.display = 'none';
       liveTimeEl.style.display = 'none';
       liveClaimEl.textContent =
@@ -605,7 +627,7 @@
       relevancePill.textContent = '0% Factual • N/A';
       scoreValEl.textContent = 'N/A';
       scoreValEl.className = 'yt-truth-score-value';
-      countersEl.innerHTML = '';
+      setSafeHtml(countersEl, '');
       verdictBadge.style.display = 'none';
       liveTimeEl.style.display = 'none';
       liveClaimEl.textContent = `Not applicable for fact-checking (${
@@ -635,19 +657,22 @@
             : metrics.accuracyPct >= 55
             ? 'score-mid'
             : 'score-low');
-        countersEl.innerHTML = `
+        setSafeHtml(
+          countersEl,
+          `
           <span class="yt-truth-cnt-true" title="True claims">${metrics.trueCount}✓</span>
           <span class="yt-truth-cnt-warn" title="Questionable claims">${metrics.questionableCount}⚠</span>
           <span class="yt-truth-cnt-false" title="False claims">${metrics.falseCount}✗</span>
-        `;
+        `
+        );
       } else if (metrics.checkedCount > 0) {
         scoreValEl.textContent = '100% Clear';
         scoreValEl.className = 'yt-truth-score-value score-high';
-        countersEl.innerHTML = `<span class="yt-truth-cnt-true">0 disputed</span>`;
+        setSafeHtml(countersEl, `<span class="yt-truth-cnt-true">0 disputed</span>`);
       } else {
         scoreValEl.textContent = 'Checking...';
         scoreValEl.className = 'yt-truth-score-value';
-        countersEl.innerHTML = '';
+        setSafeHtml(countersEl, '');
       }
 
       // Update Center Live Claim / Status section
@@ -751,7 +776,7 @@
         )}%;"></div>`
       );
     }
-    chunksContainer.innerHTML = chunkHtml.join('');
+    setSafeHtml(chunksContainer, chunkHtml.join(''));
 
     // Render colored ticks for all claims
     const claims = getAllClaims();
@@ -777,7 +802,7 @@
         )}"></div>`
       );
     }
-    ticksContainer.innerHTML = tickHtml.join('');
+    setSafeHtml(ticksContainer, tickHtml.join(''));
   }
 
   function renderDrawer(mounted, metrics, activeClaim) {
@@ -795,28 +820,40 @@
     });
 
     if (!metrics.isRelevant) {
-      summaryEl.innerHTML = `<strong>Not Applicable (N/A):</strong> This video was classified as <strong>${escapeHtml(
-        STATE.irrelevantReason || 'Entertainment / Non-factual'
-      )}</strong> (0% relevant for fact-checking).`;
-      listEl.innerHTML = `<div class="yt-truth-empty-state">No factual claims to check in this video.</div>`;
+      setSafeHtml(
+        summaryEl,
+        `<strong>Not Applicable (N/A):</strong> This video was classified as <strong>${escapeHtml(
+          STATE.irrelevantReason || 'Entertainment / Non-factual'
+        )}</strong> (0% relevant for fact-checking).`
+      );
+      setSafeHtml(
+        listEl,
+        `<div class="yt-truth-empty-state">No factual claims to check in this video.</div>`
+      );
       return;
     }
 
     if (metrics.checkedCount === 0) {
-      summaryEl.innerHTML = `Analyzing video captions in parallel with playback...`;
-      listEl.innerHTML = `<div class="yt-truth-empty-state">Extracting and verifying claims from current playback window...</div>`;
+      setSafeHtml(summaryEl, `Analyzing video captions in parallel with playback...`);
+      setSafeHtml(
+        listEl,
+        `<div class="yt-truth-empty-state">Extracting and verifying claims from current playback window...</div>`
+      );
       return;
     }
 
-    summaryEl.innerHTML = `<strong>${
-      metrics.relevancePct ?? 0
-    }% of this video</strong> is relevant for fact-checking. Out of <strong>${
-      metrics.totalClaims
-    } claims</strong> checked (${metrics.checkedCount}/${metrics.totalChunks} segments), the accuracy score is <strong>${
-      metrics.accuracyPct !== null ? `${metrics.accuracyPct}%` : '100%'
-    }</strong> (${metrics.trueCount} True, ${metrics.questionableCount} Questionable, ${
-      metrics.falseCount
-    } False).`;
+    setSafeHtml(
+      summaryEl,
+      `<strong>${
+        metrics.relevancePct ?? 0
+      }% of this video</strong> is relevant for fact-checking. Out of <strong>${
+        metrics.totalClaims
+      } claims</strong> checked (${metrics.checkedCount}/${metrics.totalChunks} segments), the accuracy score is <strong>${
+        metrics.accuracyPct !== null ? `${metrics.accuracyPct}%` : '100%'
+      }</strong> (${metrics.trueCount} True, ${metrics.questionableCount} Questionable, ${
+        metrics.falseCount
+      } False).`
+    );
 
     let claims = getAllClaims();
     if (STATE.activeFilter !== 'ALL') {
@@ -824,30 +861,35 @@
     }
 
     if (claims.length === 0) {
-      listEl.innerHTML = `<div class="yt-truth-empty-state">No claims match the "${STATE.activeFilter}" filter yet.</div>`;
+      setSafeHtml(
+        listEl,
+        `<div class="yt-truth-empty-state">No claims match the "${STATE.activeFilter}" filter yet.</div>`
+      );
       return;
     }
 
-    listEl.innerHTML = claims
-      .map((c) => {
-        const vLower = c.verdict.toLowerCase();
-        const isCurrent = activeClaim && activeClaim.id === c.id;
-        const badgeLabel =
-          c.verdict === 'TRUE'
-            ? '✓ TRUE'
-            : c.verdict === 'FALSE'
-            ? '✗ FALSE'
-            : '⚠ QUESTIONABLE';
+    setSafeHtml(
+      listEl,
+      claims
+        .map((c) => {
+          const vLower = c.verdict.toLowerCase();
+          const isCurrent = activeClaim && activeClaim.id === c.id;
+          const badgeLabel =
+            c.verdict === 'TRUE'
+              ? '✓ TRUE'
+              : c.verdict === 'FALSE'
+              ? '✗ FALSE'
+              : '⚠ QUESTIONABLE';
 
-        const methodLabel = c.verifyingWithSearch
-          ? '🔍 Searching Google...'
-          : c.searchVerified
-          ? '🌐 Google Search Verified'
-          : '⚡ Gemini Knowledge';
+          const methodLabel = c.verifyingWithSearch
+            ? '🔍 Searching Google...'
+            : c.searchVerified
+            ? '🌐 Google Search Verified'
+            : '⚡ Gemini Knowledge';
 
-        const sourcesHtml =
-          Array.isArray(c.sources) && c.sources.length > 0
-            ? `<div class="yt-truth-card-sources">
+          const sourcesHtml =
+            Array.isArray(c.sources) && c.sources.length > 0
+              ? `<div class="yt-truth-card-sources">
                 ${c.sources
                   .map(
                     (s) =>
@@ -859,12 +901,12 @@
                   )
                   .join('')}
               </div>`
-            : '';
+              : '';
 
-        return `
+          return `
           <div class="yt-truth-claim-card card-${vLower} ${
-          isCurrent ? 'active-now' : ''
-        }" data-claim-id="${escapeHtml(c.id)}">
+            isCurrent ? 'active-now' : ''
+          }" data-claim-id="${escapeHtml(c.id)}">
             <div class="yt-truth-card-top">
               <div class="yt-truth-card-left-meta">
                 <button type="button" class="yt-truth-seek-btn" data-start="${
@@ -883,8 +925,9 @@
             ${sourcesHtml}
           </div>
         `;
-      })
-      .join('');
+        })
+        .join('')
+    );
   }
 
   /**
@@ -1060,19 +1103,37 @@
       }
     }
 
-    // 2. Fetch video metadata + Closed Captions (CC) from page-bridge.js in parallel
-    const bridgeResp = await fetchVideoDataFromBridge(videoId);
-    if (runToken !== currentRunToken) return;
-
-    if (!bridgeResp?.success || !bridgeResp.data) {
-      STATE.hasCaptions = false;
-      STATE.isAnalyzing = false;
-      STATE.error = bridgeResp?.error || 'Could not read YouTube player data.';
-      scheduleRender();
-      return;
+    // 2. Fetch video metadata + Closed Captions (CC) via Service Worker first, with Page Bridge fallback
+    let transcriptData = null;
+    try {
+      const swResp = await chrome.runtime.sendMessage({
+        type: 'FETCH_VIDEO_TRANSCRIPT',
+        videoId
+      });
+      if (swResp?.ok && swResp.data?.hasCaptions && swResp.data.segments?.length > 0) {
+        transcriptData = swResp.data;
+      }
+    } catch {
+      // fallback to page bridge below
     }
 
-    const { metadata, hasCaptions, languageCode, segments } = bridgeResp.data;
+    if (runToken !== currentRunToken) return;
+
+    if (!transcriptData) {
+      const bridgeResp = await fetchVideoDataFromBridge(videoId);
+      if (runToken !== currentRunToken) return;
+      if (bridgeResp?.success && bridgeResp.data) {
+        transcriptData = bridgeResp.data;
+      } else {
+        STATE.hasCaptions = false;
+        STATE.isAnalyzing = false;
+        STATE.error = bridgeResp?.error || 'Could not read YouTube player data.';
+        scheduleRender();
+        return;
+      }
+    }
+
+    const { metadata, hasCaptions, languageCode, segments } = transcriptData;
     STATE.metadata = metadata;
     STATE.languageCode = languageCode || 'en';
     STATE.hasCaptions = Boolean(hasCaptions && segments && segments.length > 0);

@@ -76,6 +76,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
 
+        case 'FETCH_VIDEO_TRANSCRIPT': {
+          const data = await fetchTranscriptFromServiceWorker(message.videoId);
+          sendResponse({ ok: true, data });
+          break;
+        }
+
         case 'ANALYZE_CHUNK': {
           const tabId = sender.tab?.id;
           const result = await handleAnalyzeChunk(message.payload, tabId);
@@ -153,6 +159,134 @@ function formatSec(sec) {
   const m = Math.floor(s / 60);
   const rem = s % 60;
   return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+}
+
+function decodeHtmlEntitiesSW(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = parseInt(dec, 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : _;
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : _;
+    })
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function parseXmlTranscriptSW(xmlText) {
+  if (!xmlText || typeof xmlText !== 'string') return [];
+  const segments = [];
+  const textRegex = /<text\b([^>]*)>([\s\S]*?)<\/text>/gi;
+  let match;
+  while ((match = textRegex.exec(xmlText)) !== null) {
+    const attrs = match[1];
+    const rawContent = match[2].replace(/<[^>]+>/g, '');
+    const startMatch = attrs.match(/\bstart\s*=\s*["']([^"']+)["']/i);
+    const durMatch = attrs.match(/\bdur\s*=\s*["']([^"']+)["']/i);
+    const start = startMatch ? parseFloat(startMatch[1]) : 0;
+    const duration = durMatch ? parseFloat(durMatch[1]) : 3;
+    const text = decodeHtmlEntitiesSW(rawContent).replace(/\s+/g, ' ').trim();
+    if (text) {
+      segments.push({
+        start: Math.round(start * 10) / 10,
+        duration: Math.round(duration * 10) / 10,
+        end: Math.round((start + duration) * 10) / 10,
+        text
+      });
+    }
+  }
+  if (segments.length > 0) return segments;
+
+  const pRegex = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
+  while ((match = pRegex.exec(xmlText)) !== null) {
+    const attrs = match[1];
+    const rawContent = match[2].replace(/<[^>]+>/g, '');
+    const tMatch = attrs.match(/\bt\s*=\s*["']([^"']+)["']/i);
+    const dMatch = attrs.match(/\bd\s*=\s*["']([^"']+)["']/i);
+    if (!tMatch) continue;
+    const start = parseFloat(tMatch[1]) / 1000;
+    const duration = dMatch ? parseFloat(dMatch[1]) / 1000 : 3;
+    const text = decodeHtmlEntitiesSW(rawContent).replace(/\s+/g, ' ').trim();
+    if (text) {
+      segments.push({
+        start: Math.round(start * 10) / 10,
+        duration: Math.round(duration * 10) / 10,
+        end: Math.round((start + duration) * 10) / 10,
+        text
+      });
+    }
+  }
+  return segments;
+}
+
+async function fetchTranscriptFromServiceWorker(videoId) {
+  const clients = [
+    { clientName: 'IOS', clientVersion: '20.10.4' },
+    { clientName: 'ANDROID', clientVersion: '20.10.38' }
+  ];
+
+  for (const client of clients) {
+    try {
+      const resp = await fetch('https://www.youtube.com/youtubei/v1/player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: client.clientName,
+              clientVersion: client.clientVersion,
+              hl: 'en',
+              gl: 'US'
+            }
+          },
+          videoId
+        })
+      });
+      if (!resp.ok) continue;
+      const pr = await resp.json();
+      const tracks =
+        pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+      if (tracks.length === 0) continue;
+
+      const manual = tracks.filter((t) => t.kind !== 'asr');
+      const chosen = manual.length > 0 ? manual[0] : tracks[0];
+      const tResp = await fetch(chosen.baseUrl);
+      if (!tResp.ok) continue;
+      const xml = await tResp.text();
+      const segments = parseXmlTranscriptSW(xml);
+      if (segments.length > 0) {
+        const details = pr.videoDetails || {};
+        const micro = pr.microformat?.playerMicroformatRenderer || {};
+        return {
+          metadata: {
+            videoId,
+            title: details.title || '',
+            author: details.author || '',
+            shortDescription: (details.shortDescription || '').slice(0, 1200),
+            lengthSeconds: parseInt(details.lengthSeconds || '0', 10) || 0,
+            category: micro.category || '',
+            isLiveContent: Boolean(details.isLiveContent),
+            keywords: Array.isArray(details.keywords) ? details.keywords.slice(0, 15) : []
+          },
+          hasCaptions: true,
+          languageCode: chosen.languageCode || 'en',
+          languageName: chosen.name?.simpleText || chosen.languageCode || 'en',
+          isAutoGenerated: chosen.kind === 'asr',
+          segments
+        };
+      }
+    } catch {
+      // try next client
+    }
+  }
+  return { hasCaptions: false, segments: [] };
 }
 
 /**
