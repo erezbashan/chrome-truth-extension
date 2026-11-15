@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube Truth Bar</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <div class="brand-row">
+        <div class="traffic-dots">
+          <span class="dot dot-green"></span>
+          <span class="dot dot-yellow"></span>
+          <span class="dot dot-red"></span>
+        </div>
+        <h1>YouTube Truth Bar</h1>
+        <span class="status-pill" id="version-pill" style="margin-left:auto;">v1.0.1</span>
+      </div>
+      <p class="subtitle">Real-time Closed Caption Fact-Checking with Gemini</p>
+    </header>
+
+    <section class="card">
+      <div class="field-header">
+        <label for="api-key-input">Gemini API Key</label>
+        <span class="status-pill" id="key-status-pill">Checking...</span>
+      </div>
+      <input
+        type="password"
+        id="api-key-input"
+        placeholder="Paste key here or set in config.js..."
+        autocomplete="off"
+      />
+      <p class="hint">
+        You can hardcode <code>GEMINI_API_KEY</code> in <code>config.js</code> or paste an override key above.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="row-field">
+        <div>
+          <div class="field-title">2-Step Google Search Grounding</div>
+          <div class="field-desc">Run live Google Search when Step 1 flags stats or dubious claims</div>
+        </div>
+        <input type="checkbox" id="grounding-toggle" checked />
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row-field">
+        <div>
+          <div class="field-title">Auto-Check on Video Play</div>
+          <div class="field-desc">Start checking in parallel as soon as a video starts</div>
+        </div>
+        <input type="checkbox" id="autocheck-toggle" checked />
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row-field">
+        <label for="model-select" class="field-title">Gemini Model</label>
+        <select id="model-select">
+          <option value="gemini-2.5-flash">gemini-2.5-flash (Fastest)</option>
+          <option value="gemini-2.5-pro">gemini-2.5-pro (Deepest)</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row-field">
+        <label for="linger-select" class="field-title">Claim Linger Buffer</label>
+        <select id="linger-select">
+          <option value="6">6 seconds</option>
+          <option value="10" selected>10 seconds (Recommended)</option>
+          <option value="15">15 seconds</option>
+          <option value="25">25 seconds</option>
+        </select>
+      </div>
+    </section>
+
+    <footer class="popup-footer">
+      <button type="button" id="save-btn" class="primary-btn">Save Settings</button>
+      <div id="save-toast" class="save-toast hidden">✓ Saved</div>
+    </footer>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

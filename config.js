@@ -1,0 +1,32 @@
+/**
+ * YouTube Truth Bar — Configuration
+ *
+ * NOTE ON CREDENTIALS & GIT SECURITY:
+ * Because this repository is pushed to GitHub, do NOT commit a live API key in this file
+ * (Google automatically revokes leaked AIzaSy... keys pushed to GitHub).
+ * Instead, local credentials are automatically read from `config.local.json` (which is git-ignored)
+ * or from the Extension Popup / inline drawer.
+ */
+export const CONFIG = {
+  // Extension build version (displayed in GUI per project rules; increment on each build)
+  VERSION: '1.0.1',
+
+  // Fallback placeholder if config.local.json or popup override is not present
+  GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY_HERE',
+
+  // Fast Gemini model used for both Step 1 (Triage) and Step 2 (Google Search Grounding)
+  GEMINI_MODEL: 'gemini-2.5-flash',
+
+  // Duration of each transcript chunk in seconds (~3.5 minutes)
+  // Small enough that Gemini extracts EVERY claim in the window rather than summarizing into 4-5 points
+  CHUNK_DURATION_SEC: 210,
+
+  // How many seconds a claim stays highlighted on the live bar after the speaker finishes the sentence
+  LINGER_DURATION_SEC: 10,
+
+  // Enable Step 2 Google Search Grounding for claims flagged as needing live web verification
+  ENABLE_SEARCH_GROUNDING: true,
+
+  // Automatically start fact-checking in parallel when a YouTube video plays
+  AUTO_CHECK_BY_DEFAULT: true
+};
