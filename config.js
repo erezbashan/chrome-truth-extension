@@ -9,13 +9,13 @@
  */
 export const CONFIG = {
   // Extension build version (displayed in GUI per project rules; increment on each build)
-  VERSION: '1.0.2',
+  VERSION: '1.0.3',
 
   // Fallback placeholder if config.local.json or popup override is not present
   GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY_HERE',
 
   // Fast Gemini model used for both Step 1 (Triage) and Step 2 (Google Search Grounding)
-  GEMINI_MODEL: 'gemini-2.5-flash',
+  GEMINI_MODEL: 'gemini-3.8-flash',
 
   // Duration of each transcript chunk in seconds (~3.5 minutes)
   // Small enough that Gemini extracts EVERY claim in the window rather than summarizing into 4-5 points

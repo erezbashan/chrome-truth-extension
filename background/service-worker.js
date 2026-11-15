@@ -116,6 +116,8 @@ async function loadLocalConfigKey() {
   }
 }
 
+const DEPRECATED_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash']);
+
 async function getEffectiveSettings() {
   const stored = (await chrome.storage.local.get('settings')).settings || {};
   const localFileKey = await loadLocalConfigKey();
@@ -127,9 +129,14 @@ async function getEffectiveSettings() {
       : '';
   const customKey = (stored.customApiKey || '').trim();
 
+  let model = stored.geminiModel || CONFIG.GEMINI_MODEL || 'gemini-3.8-flash';
+  if (DEPRECATED_MODELS.has(model)) {
+    model = CONFIG.GEMINI_MODEL || 'gemini-3.8-flash';
+  }
+
   return {
     apiKey: customKey || localFileKey || codeKey,
-    geminiModel: stored.geminiModel || CONFIG.GEMINI_MODEL || 'gemini-2.5-flash',
+    geminiModel: model,
     enableSearchGrounding:
       typeof stored.enableSearchGrounding === 'boolean'
         ? stored.enableSearchGrounding

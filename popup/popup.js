@@ -26,7 +26,7 @@ async function loadSettings() {
 
   groundingToggle.checked = Boolean(s.enableSearchGrounding);
   autocheckToggle.checked = Boolean(s.autoCheck);
-  modelSelect.value = s.geminiModel || 'gemini-2.5-flash';
+  modelSelect.value = s.geminiModel || 'gemini-3.8-flash';
   lingerSelect.value = String(s.lingerDurationSec || 10);
 }
 
