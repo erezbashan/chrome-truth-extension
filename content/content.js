@@ -33,7 +33,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.11',
+      version: '1.0.12',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -251,7 +251,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.11</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.12</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -291,18 +291,17 @@
         <div class="yt-truth-feedback-box hidden" id="yt-truth-feedback-box">
           <div class="yt-truth-fb-row">
             <span style="font-size: 12.5px; color: #f8fafc; font-weight: 700;">
-              ✉ Send Feedback to Erez (erez.bashan@gmail.com)
+              ✉ Send Tool Feedback to Erez (erez.bashan@gmail.com)
             </span>
             <select class="yt-truth-fb-select" id="yt-truth-fb-category">
               <option value="General Feedback">General Feedback / Idea</option>
-              <option value="Dispute Fact-Check Verdict">Dispute a Fact-Check Verdict</option>
               <option value="Bug / Issue">Bug / Technical Issue</option>
             </select>
           </div>
           <textarea
             class="yt-truth-fb-textarea"
             id="yt-truth-fb-message"
-            placeholder="Write your feedback, suggestion, or explain which claim verdict looks inaccurate..."
+            placeholder="Share your feedback, feature ideas, or report a bug with the extension..."
           ></textarea>
           <div class="yt-truth-fb-row">
             <label style="font-size: 11.5px; color: #cbd5e1; display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -548,28 +547,6 @@
         e.stopPropagation();
         STATE.drawerOpen = false;
         scheduleRender();
-        return;
-      }
-
-      const reportBtn = e.target.closest('.yt-truth-report-claim-btn');
-      if (reportBtn) {
-        e.stopPropagation();
-        const claimId = reportBtn.getAttribute('data-claim-id');
-        const claimObj = getAllClaims().find((c) => c.id === claimId);
-        STATE.drawerOpen = true;
-        STATE.showFeedbackPanel = true;
-        const catSelect = container.querySelector('#yt-truth-fb-category');
-        const msgInput = container.querySelector('#yt-truth-fb-message');
-        if (catSelect) catSelect.value = 'Dispute Fact-Check Verdict';
-        if (msgInput && claimObj) {
-          msgInput.value = `Regarding claim at [${formatTime(claimObj.startTime)}] (${
-            claimObj.verdict
-          }):\n"${claimObj.claimText}"\nGemini explanation: "${
-            claimObj.explanation
-          }"\n\nMy comment: `;
-        }
-        scheduleRender();
-        setTimeout(() => msgInput?.focus(), 50);
         return;
       }
 
@@ -1060,16 +1037,9 @@
             </button>
             <span class="yt-truth-verdict-badge verdict-${vLower}">${badgeLabel}</span>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span class="yt-truth-method-tag ${
-              c.searchVerified ? 'web-verified' : ''
-            }">${methodLabel}</span>
-            <button type="button" class="yt-truth-report-claim-btn" data-claim-id="${escapeHtml(
-              c.id
-            )}" title="Send feedback or dispute this claim verdict">
-              ✉ Feedback
-            </button>
-          </div>
+          <span class="yt-truth-method-tag ${
+            c.searchVerified ? 'web-verified' : ''
+          }">${methodLabel}</span>
         </div>
         <div class="yt-truth-card-claim">"${escapeHtml(c.claimText)}"</div>
         <div class="yt-truth-card-explanation">${escapeHtml(c.explanation)}</div>

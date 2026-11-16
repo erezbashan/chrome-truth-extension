@@ -106,23 +106,10 @@ function maskApiKey(key) {
   return `${key.slice(0, 4)}••••${key.slice(-4)}`;
 }
 
-async function loadLocalConfigKey() {
-  try {
-    const url = chrome.runtime.getURL('config.local.json');
-    const resp = await fetch(url);
-    if (!resp.ok) return '';
-    const data = await resp.json();
-    return (data?.GEMINI_API_KEY || '').trim();
-  } catch {
-    return '';
-  }
-}
-
 const DEPRECATED_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash']);
 
 async function getEffectiveSettings() {
   const stored = (await chrome.storage.local.get('settings')).settings || {};
-  const localFileKey = await loadLocalConfigKey();
   const codeKey =
     CONFIG.GEMINI_API_KEY &&
     CONFIG.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY_HERE' &&
@@ -137,7 +124,7 @@ async function getEffectiveSettings() {
   }
 
   return {
-    apiKey: customKey || localFileKey || codeKey,
+    apiKey: customKey || codeKey,
     geminiModel: model,
     enableSearchGrounding:
       typeof stored.enableSearchGrounding === 'boolean'
