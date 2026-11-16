@@ -9,7 +9,7 @@
  */
 export const CONFIG = {
   // Extension build version (displayed in GUI per project rules; increment on each build)
-  VERSION: '1.0.4',
+  VERSION: '1.0.5',
 
   // Fallback placeholder if config.local.json or popup override is not present
   GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY_HERE',

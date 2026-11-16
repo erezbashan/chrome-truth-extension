@@ -29,7 +29,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.4',
+      version: '1.0.5',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -247,7 +247,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.4</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.5</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -694,14 +694,9 @@
 
         searchingPill.style.display = activeClaim.verifyingWithSearch ? 'inline-block' : 'none';
       } else {
-        // Calm state between claims — colored subtly by overall video health
-        let calmClass = 'state-calm-green';
-        if (metrics.accuracyPct !== null) {
-          if (metrics.accuracyPct < 55 || metrics.falseCount >= 2) calmClass = 'state-calm-red';
-          else if (metrics.accuracyPct < 80 || metrics.falseCount === 1)
-            calmClass = 'state-calm-yellow';
-        }
-        barEl.className = `yt-truth-bar ${calmClass}`;
+        // Calm state between claims — always calm green ("all is well right now")
+        // Yellow/Red bar backgrounds are strictly reserved for active questionable/false claims at the current timestamp!
+        barEl.className = 'yt-truth-bar state-calm-green';
         verdictBadge.style.display = 'none';
         liveTimeEl.style.display = 'none';
         searchingPill.style.display = 'none';
