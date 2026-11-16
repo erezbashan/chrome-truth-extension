@@ -31,7 +31,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.8',
+      version: '1.0.9',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -249,7 +249,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.8</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.9</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -674,7 +674,7 @@
     // 3. Video is Non-Relevant (Music, Fiction, Entertainment, etc.)
     else if (!STATE.missingApiKey && !metrics.isRelevant) {
       barEl.className = 'yt-truth-bar state-na';
-      relevancePill.textContent = '0% Factual • N/A';
+      relevancePill.textContent = '0% Checkable • N/A';
       scoreValEl.textContent = 'N/A';
       scoreValEl.className = 'yt-truth-score-value';
       setSafeHtml(countersEl, '');
@@ -693,7 +693,7 @@
     else if (!STATE.missingApiKey) {
       // Update Left General Grade section
       if (metrics.relevancePct !== null) {
-        relevancePill.textContent = `${metrics.relevancePct}% Factual`;
+        relevancePill.textContent = `${metrics.relevancePct}% Checkable`;
       } else {
         relevancePill.textContent = 'Scanning CC...';
       }
