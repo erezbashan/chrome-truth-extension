@@ -37,8 +37,8 @@
   overflow: hidden;
   cursor: pointer;
   transition: background 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease;
-  border: 1px solid rgba(16, 185, 129, 0.45);
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.96) 0%, rgba(6, 78, 59, 0.88) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
   color: #f8fafc;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
@@ -49,9 +49,12 @@
 }
 
 /* Bar Theme States */
-.yt-truth-bar.state-calm-green {
-  border-color: rgba(16, 185, 129, 0.5);
-  background: linear-gradient(90deg, #0f172a 0%, #064e3b 60%, #065f46 100%);
+.yt-truth-bar.state-neutral,
+.yt-truth-bar.state-calm-green,
+.yt-truth-bar.state-na,
+.yt-truth-bar.state-idle {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: linear-gradient(90deg, #0f172a 0%, #1e293b 65%, #263349 100%);
 }
 
 .yt-truth-bar.state-calm-yellow {
@@ -82,12 +85,6 @@
   box-shadow: 0 0 24px rgba(239, 68, 68, 0.55);
 }
 
-.yt-truth-bar.state-na,
-.yt-truth-bar.state-idle {
-  border-color: rgba(148, 163, 184, 0.3);
-  background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
-}
-
 /* Main Row inside Bar */
 .yt-truth-bar-main {
   display: flex;
@@ -112,9 +109,14 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+.state-active-true .yt-truth-brand-dot {
   background: #10b981;
   box-shadow: 0 0 8px #10b981;
-  flex-shrink: 0;
 }
 
 .state-active-questionable .yt-truth-brand-dot,
@@ -127,12 +129,6 @@
 .state-calm-red .yt-truth-brand-dot {
   background: #f87171;
   box-shadow: 0 0 8px #f87171;
-}
-
-.state-na .yt-truth-brand-dot,
-.state-idle .yt-truth-brand-dot {
-  background: #94a3b8;
-  box-shadow: none;
 }
 
 .yt-truth-relevance-pill {

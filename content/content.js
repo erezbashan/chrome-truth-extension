@@ -31,7 +31,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.7',
+      version: '1.0.8',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -249,7 +249,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.7</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.8</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -747,9 +747,8 @@
 
         searchingPill.style.display = activeClaim.verifyingWithSearch ? 'inline-block' : 'none';
       } else {
-        // Calm state between claims — always calm green ("all is well right now")
-        // Yellow/Red bar backgrounds are strictly reserved for active questionable/false claims at the current timestamp!
-        barEl.className = 'yt-truth-bar state-calm-green';
+        // Neutral slate state between claims when no factual claim is actively being evaluated
+        barEl.className = 'yt-truth-bar state-neutral';
         verdictBadge.style.display = 'none';
         liveTimeEl.style.display = 'none';
         searchingPill.style.display = 'none';
