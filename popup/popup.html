@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YouTube Truth Bar</title>
+  <title>Truth Bar for YouTube</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
@@ -15,33 +15,34 @@
           <span class="dot dot-yellow"></span>
           <span class="dot dot-red"></span>
         </div>
-        <h1>YouTube Truth Bar</h1>
-        <span class="status-pill" id="version-pill" style="margin-left:auto;">v1.0.10</span>
+        <h1>Truth Bar for YouTube</h1>
+        <span class="status-pill" id="version-pill" style="margin-left:auto;">v1.0.11</span>
       </div>
       <p class="subtitle">Real-time Closed Caption Fact-Checking with Gemini</p>
     </header>
 
     <section class="card">
       <div class="field-header">
-        <label for="api-key-input">Gemini API Key</label>
+        <label for="api-key-input">🔑 Gemini API Key</label>
         <span class="status-pill" id="key-status-pill">Checking...</span>
+      </div>
+      <div class="steps-box">
+        1. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get a free key at Google AI Studio ↗</a><br />
+        2. Click <strong>"Create API key"</strong>, paste it below &amp; click <strong>Save Settings</strong>.
       </div>
       <input
         type="password"
         id="api-key-input"
-        placeholder="Paste key here or set in config.js..."
+        placeholder="Paste AIzaSy... key here"
         autocomplete="off"
       />
-      <p class="hint">
-        You can hardcode <code>GEMINI_API_KEY</code> in <code>config.js</code> or paste an override key above.
-      </p>
     </section>
 
     <section class="card">
       <div class="row-field">
         <div>
           <div class="field-title">2-Step Google Search Grounding</div>
-          <div class="field-desc">Run live Google Search when Step 1 flags stats or dubious claims</div>
+          <div class="field-desc">Verify stats &amp; dubious claims with live Google Search</div>
         </div>
         <input type="checkbox" id="grounding-toggle" checked />
       </div>
@@ -51,7 +52,7 @@
       <div class="row-field">
         <div>
           <div class="field-title">Auto-Check on Video Play</div>
-          <div class="field-desc">Start checking in parallel as soon as a video starts</div>
+          <div class="field-desc">Start checking in parallel from your playback position</div>
         </div>
         <input type="checkbox" id="autocheck-toggle" checked />
       </div>
@@ -78,12 +79,32 @@
           <option value="25">25 seconds</option>
         </select>
       </div>
+
+      <div class="popup-footer" style="margin-top:4px;">
+        <button type="button" id="save-btn" class="primary-btn">Save Settings</button>
+        <div id="save-toast" class="save-toast hidden">✓ Saved</div>
+      </div>
     </section>
 
-    <footer class="popup-footer">
-      <button type="button" id="save-btn" class="primary-btn">Save Settings</button>
-      <div id="save-toast" class="save-toast hidden">✓ Saved</div>
-    </footer>
+    <section class="card">
+      <div class="field-header">
+        <label for="feedback-text">✉ Send Feedback</label>
+        <select id="feedback-type" class="small-select">
+          <option value="General Feedback">General / Idea</option>
+          <option value="Dispute Fact-Check Verdict">Wrong Verdict</option>
+          <option value="Bug / Issue">Bug / Issue</option>
+        </select>
+      </div>
+      <textarea
+        id="feedback-text"
+        rows="3"
+        placeholder="Tell Erez what you think, report a bug, or share a video link..."
+      ></textarea>
+      <div class="feedback-actions">
+        <button type="button" id="fb-gmail-btn" class="secondary-btn">Send via Gmail ↗</button>
+        <button type="button" id="fb-mailto-btn" class="secondary-btn">Email App</button>
+      </div>
+    </section>
   </div>
 
   <script type="module" src="popup.js"></script>

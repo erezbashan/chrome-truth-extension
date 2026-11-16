@@ -25,13 +25,15 @@
     isPaused: false,
     error: null,
     missingApiKey: false,
+    showKeyPanel: false,
+    showFeedbackPanel: false,
     drawerOpen: false,
     drawerMode: 'SINGLE', // 'SINGLE' | 'ALL'
     focusedClaimId: null,
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.10',
+      version: '1.0.11',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -249,7 +251,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.10</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.11</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -269,11 +271,54 @@
 
       <div class="yt-truth-drawer hidden" id="yt-truth-drawer">
         <div class="yt-truth-key-box hidden" id="yt-truth-key-box">
-          <span style="font-size: 12px; color: #bfdbfe; font-weight: 600;">
-            🔑 Enter your Gemini API Key (or set GEMINI_API_KEY in config.js):
-          </span>
-          <input type="password" class="yt-truth-key-input" id="yt-truth-key-input" placeholder="AIzaSy..." />
-          <button type="button" class="yt-truth-action-btn" id="yt-truth-save-key-btn">Save & Check Video</button>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <span style="font-size: 12.5px; color: #bfdbfe; font-weight: 700;">
+              🔑 Gemini API Key Setup
+            </span>
+            <span id="yt-truth-key-status-label" style="font-size: 11px; color: #93c5fd;"></span>
+          </div>
+          <div class="yt-truth-key-steps">
+            1. Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio (aistudio.google.com/apikey) ↗</a> and click <strong>"Create API key"</strong> (free).<br/>
+            2. Paste your key below (starts with <code>AIzaSy...</code>) and click <strong>Save & Check Video</strong>. Your key is stored locally in your browser.
+          </div>
+          <div class="yt-truth-key-row">
+            <input type="password" class="yt-truth-key-input" id="yt-truth-key-input" placeholder="Paste Gemini API key (AIzaSy...)" />
+            <button type="button" class="yt-truth-fb-primary-btn" id="yt-truth-save-key-btn">Save & Check Video</button>
+            <button type="button" class="yt-truth-action-btn" id="yt-truth-close-key-btn">Hide</button>
+          </div>
+        </div>
+
+        <div class="yt-truth-feedback-box hidden" id="yt-truth-feedback-box">
+          <div class="yt-truth-fb-row">
+            <span style="font-size: 12.5px; color: #f8fafc; font-weight: 700;">
+              ✉ Send Feedback to Erez (erez.bashan@gmail.com)
+            </span>
+            <select class="yt-truth-fb-select" id="yt-truth-fb-category">
+              <option value="General Feedback">General Feedback / Idea</option>
+              <option value="Dispute Fact-Check Verdict">Dispute a Fact-Check Verdict</option>
+              <option value="Bug / Issue">Bug / Technical Issue</option>
+            </select>
+          </div>
+          <textarea
+            class="yt-truth-fb-textarea"
+            id="yt-truth-fb-message"
+            placeholder="Write your feedback, suggestion, or explain which claim verdict looks inaccurate..."
+          ></textarea>
+          <div class="yt-truth-fb-row">
+            <label style="font-size: 11.5px; color: #cbd5e1; display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="yt-truth-fb-include-ctx" checked />
+              Include current video URL, timestamp &amp; version
+            </label>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button type="button" class="yt-truth-fb-primary-btn" id="yt-truth-fb-gmail-btn" title="Open pre-filled email in Gmail web">
+                Send via Gmail ↗
+              </button>
+              <button type="button" class="yt-truth-action-btn" id="yt-truth-fb-mailto-btn" title="Open in default desktop email client">
+                Email App (mailto)
+              </button>
+              <button type="button" class="yt-truth-action-btn" id="yt-truth-fb-cancel-btn">Cancel</button>
+            </div>
+          </div>
         </div>
 
         <div class="yt-truth-drawer-header" id="yt-truth-drawer-header">
@@ -289,6 +334,8 @@
             </div>
             <button type="button" class="yt-truth-action-btn" id="yt-truth-pause-btn">⏸ Pause</button>
             <button type="button" class="yt-truth-action-btn" id="yt-truth-recheck-btn">↻ Re-check</button>
+            <button type="button" class="yt-truth-action-btn" id="yt-truth-key-toggle-btn" title="Set or change your Gemini API key">🔑 Key</button>
+            <button type="button" class="yt-truth-action-btn" id="yt-truth-feedback-toggle-btn" title="Send feedback or report an issue">✉ Feedback</button>
             <button type="button" class="yt-truth-close-drawer-btn" id="yt-truth-close-drawer-btn">✕ Close</button>
           </div>
         </div>
@@ -382,9 +429,93 @@
         type: 'SAVE_SETTINGS',
         settings: { customApiKey: val }
       });
+      input.value = '';
       STATE.missingApiKey = false;
+      STATE.showKeyPanel = false;
       STATE.error = null;
       await refreshSettingsAndMaybeRestart();
+    });
+
+    // Key panel toggle & close buttons
+    container.querySelector('#yt-truth-key-toggle-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      STATE.showKeyPanel = !STATE.showKeyPanel;
+      scheduleRender();
+    });
+    container.querySelector('#yt-truth-close-key-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      STATE.showKeyPanel = false;
+      scheduleRender();
+    });
+
+    // Feedback panel toggle & cancel buttons
+    container.querySelector('#yt-truth-feedback-toggle-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      STATE.showFeedbackPanel = !STATE.showFeedbackPanel;
+      scheduleRender();
+    });
+    container.querySelector('#yt-truth-fb-cancel-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      STATE.showFeedbackPanel = false;
+      scheduleRender();
+    });
+
+    function buildFeedbackEmailPayload() {
+      const category =
+        container.querySelector('#yt-truth-fb-category')?.value || 'General Feedback';
+      const userMsg = (
+        container.querySelector('#yt-truth-fb-message')?.value || ''
+      ).trim();
+      const includeCtx = Boolean(
+        container.querySelector('#yt-truth-fb-include-ctx')?.checked
+      );
+      const version = STATE.settings?.version || '1.0.11';
+      const videoTitle = STATE.metadata?.title || document.title.replace(/ - YouTube$/, '');
+      const currentTimeSec = videoEl ? Math.floor(videoEl.currentTime || 0) : 0;
+      const videoUrl = STATE.videoId
+        ? `https://www.youtube.com/watch?v=${STATE.videoId}&t=${currentTimeSec}s`
+        : window.location.href;
+
+      const subject = `[Truth Bar v${version}] ${category}: ${videoTitle.slice(0, 55)}`;
+      const bodyLines = [
+        userMsg || '(Write your feedback here)',
+        ''
+      ];
+      if (includeCtx) {
+        bodyLines.push(
+          '---',
+          `Video: ${videoTitle}`,
+          `Link at timestamp (${formatTime(currentTimeSec)}): ${videoUrl}`,
+          `Extension Version: v${version}`
+        );
+      }
+      return {
+        to: 'erez.bashan@gmail.com',
+        subject,
+        body: bodyLines.join('\n')
+      };
+    }
+
+    container.querySelector('#yt-truth-fb-gmail-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const { to, subject, body } = buildFeedbackEmailPayload();
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+        to
+      )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+      STATE.showFeedbackPanel = false;
+      scheduleRender();
+    });
+
+    container.querySelector('#yt-truth-fb-mailto-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const { to, subject, body } = buildFeedbackEmailPayload();
+      const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(
+        subject
+      )}&body=${encodeURIComponent(body)}`;
+      window.open(mailtoUrl, '_blank');
+      STATE.showFeedbackPanel = false;
+      scheduleRender();
     });
 
     // Delegate click on timeline ticks, claim card seek buttons, and "More / Show all" button
@@ -417,6 +548,28 @@
         e.stopPropagation();
         STATE.drawerOpen = false;
         scheduleRender();
+        return;
+      }
+
+      const reportBtn = e.target.closest('.yt-truth-report-claim-btn');
+      if (reportBtn) {
+        e.stopPropagation();
+        const claimId = reportBtn.getAttribute('data-claim-id');
+        const claimObj = getAllClaims().find((c) => c.id === claimId);
+        STATE.drawerOpen = true;
+        STATE.showFeedbackPanel = true;
+        const catSelect = container.querySelector('#yt-truth-fb-category');
+        const msgInput = container.querySelector('#yt-truth-fb-message');
+        if (catSelect) catSelect.value = 'Dispute Fact-Check Verdict';
+        if (msgInput && claimObj) {
+          msgInput.value = `Regarding claim at [${formatTime(claimObj.startTime)}] (${
+            claimObj.verdict
+          }):\n"${claimObj.claimText}"\nGemini explanation: "${
+            claimObj.explanation
+          }"\n\nMy comment: `;
+        }
+        scheduleRender();
+        setTimeout(() => msgInput?.focus(), 50);
         return;
       }
 
@@ -615,6 +768,8 @@
     }
     const drawerEl = mounted.querySelector('#yt-truth-drawer');
     const keyBoxEl = mounted.querySelector('#yt-truth-key-box');
+    const keyStatusLabel = mounted.querySelector('#yt-truth-key-status-label');
+    const feedbackBoxEl = mounted.querySelector('#yt-truth-feedback-box');
     const pauseBtn = mounted.querySelector('#yt-truth-pause-btn');
 
     const currentTime = videoEl ? videoEl.currentTime || 0 : 0;
@@ -634,6 +789,16 @@
     const activeClaim = findActiveClaimAtTime(currentTime);
     STATE.activeClaimId = activeClaim ? activeClaim.id : null;
 
+    if (keyStatusLabel) {
+      keyStatusLabel.textContent = STATE.settings?.hasApiKey
+        ? `✓ Active (${STATE.settings.maskedKey})`
+        : '⚠ No API key configured';
+    }
+
+    if (feedbackBoxEl) {
+      feedbackBoxEl.classList.toggle('hidden', !STATE.showFeedbackPanel);
+    }
+
     // 1. Missing API key state
     if (STATE.missingApiKey) {
       barEl.className = 'yt-truth-bar state-calm-yellow';
@@ -644,14 +809,14 @@
       verdictBadge.style.display = 'none';
       liveTimeEl.style.display = 'none';
       liveClaimEl.textContent =
-        'Gemini API key not set — Click here to paste your key or set GEMINI_API_KEY in config.js';
+        'Welcome! Click here to paste your free Gemini API key (takes 30 seconds)';
       liveExpEl.textContent = '';
       searchingPill.style.display = 'none';
       spinnerEl.style.display = 'none';
-      progressTextEl.textContent = 'Waiting for key';
+      progressTextEl.textContent = 'Setup Key';
       keyBoxEl.classList.remove('hidden');
     } else {
-      keyBoxEl.classList.add('hidden');
+      keyBoxEl.classList.toggle('hidden', !STATE.showKeyPanel);
     }
 
     // 2. No Captions available state
@@ -895,9 +1060,16 @@
             </button>
             <span class="yt-truth-verdict-badge verdict-${vLower}">${badgeLabel}</span>
           </div>
-          <span class="yt-truth-method-tag ${
-            c.searchVerified ? 'web-verified' : ''
-          }">${methodLabel}</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="yt-truth-method-tag ${
+              c.searchVerified ? 'web-verified' : ''
+            }">${methodLabel}</span>
+            <button type="button" class="yt-truth-report-claim-btn" data-claim-id="${escapeHtml(
+              c.id
+            )}" title="Send feedback or dispute this claim verdict">
+              ✉ Feedback
+            </button>
+          </div>
         </div>
         <div class="yt-truth-card-claim">"${escapeHtml(c.claimText)}"</div>
         <div class="yt-truth-card-explanation">${escapeHtml(c.explanation)}</div>

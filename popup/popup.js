@@ -6,16 +6,24 @@ const modelSelect = document.getElementById('model-select');
 const lingerSelect = document.getElementById('linger-select');
 const saveBtn = document.getElementById('save-btn');
 const saveToast = document.getElementById('save-toast');
+const feedbackType = document.getElementById('feedback-type');
+const feedbackText = document.getElementById('feedback-text');
+const fbGmailBtn = document.getElementById('fb-gmail-btn');
+const fbMailtoBtn = document.getElementById('fb-mailto-btn');
+
+let currentVersion = '1.0.11';
 
 async function loadSettings() {
   const resp = await chrome.runtime.sendMessage({ type: 'GET_CONFIG_AND_CACHE' });
   if (!resp || !resp.ok) return;
 
   const s = resp.settings;
-  const versionPill = document.getElementById('version-pill');
-  if (versionPill && s.version) {
-    versionPill.textContent = `v${s.version}`;
+  if (s.version) {
+    currentVersion = s.version;
+    const versionPill = document.getElementById('version-pill');
+    if (versionPill) versionPill.textContent = `v${s.version}`;
   }
+
   if (s.hasApiKey) {
     keyStatusPill.textContent = `Active (${s.maskedKey})`;
     keyStatusPill.className = 'status-pill ok';
@@ -56,6 +64,34 @@ saveBtn.addEventListener('click', async () => {
       saveToast.classList.add('hidden');
     }, 2000);
   }
+});
+
+function buildPopupFeedbackPayload() {
+  const category = feedbackType?.value || 'General Feedback';
+  const msg = (feedbackText?.value || '').trim() || '(Write your feedback here)';
+  const subject = `[Truth Bar v${currentVersion}] ${category}`;
+  const body = `${msg}\n\n---\nExtension Version: v${currentVersion}`;
+  return {
+    to: 'erez.bashan@gmail.com',
+    subject,
+    body
+  };
+}
+
+fbGmailBtn?.addEventListener('click', () => {
+  const { to, subject, body } = buildPopupFeedbackPayload();
+  const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+    to
+  )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+});
+
+fbMailtoBtn?.addEventListener('click', () => {
+  const { to, subject, body } = buildPopupFeedbackPayload();
+  const url = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(
+    body
+  )}`;
+  window.open(url, '_blank');
 });
 
 loadSettings();
