@@ -26,10 +26,12 @@
     error: null,
     missingApiKey: false,
     drawerOpen: false,
+    drawerMode: 'SINGLE', // 'SINGLE' | 'ALL'
+    focusedClaimId: null,
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.5',
+      version: '1.0.6',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -247,7 +249,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.5</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.6</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -274,7 +276,7 @@
           <button type="button" class="yt-truth-action-btn" id="yt-truth-save-key-btn">Save & Check Video</button>
         </div>
 
-        <div class="yt-truth-drawer-header">
+        <div class="yt-truth-drawer-header" id="yt-truth-drawer-header">
           <div class="yt-truth-drawer-summary" id="yt-truth-drawer-summary" dir="auto">
             Waiting for transcript analysis...
           </div>
@@ -298,7 +300,34 @@
     const barEl = container.querySelector('#yt-truth-bar');
     barEl.addEventListener('click', (e) => {
       if (e.target.closest('.yt-truth-timeline-tick')) return;
-      STATE.drawerOpen = !STATE.drawerOpen;
+
+      // Clicking specifically on the "▼ Claims (N)" button on the right opens/toggles ALL claims
+      if (e.target.closest('#yt-truth-expand-btn')) {
+        if (STATE.drawerOpen && STATE.drawerMode === 'ALL') {
+          STATE.drawerOpen = false;
+        } else {
+          STATE.drawerOpen = true;
+          STATE.drawerMode = 'ALL';
+        }
+        scheduleRender();
+        return;
+      }
+
+      // Clicking on the bar itself (e.g. on the active claim being evaluated):
+      // Show ONLY the current claim in SINGLE mode (with a "More / Show all claims" button)
+      const currentTime = videoEl ? videoEl.currentTime || 0 : 0;
+      const activeClaim = findActiveClaimAtTime(currentTime);
+
+      if (STATE.drawerOpen) {
+        STATE.drawerOpen = false;
+      } else if (activeClaim) {
+        STATE.drawerOpen = true;
+        STATE.drawerMode = 'SINGLE';
+        STATE.focusedClaimId = activeClaim.id;
+      } else {
+        STATE.drawerOpen = true;
+        STATE.drawerMode = 'ALL';
+      }
       scheduleRender();
     });
 
@@ -357,13 +386,36 @@
       await refreshSettingsAndMaybeRestart();
     });
 
-    // Delegate click on timeline ticks and claim card seek buttons
+    // Delegate click on timeline ticks, claim card seek buttons, and "More / Show all" button
     container.addEventListener('click', (e) => {
       const tick = e.target.closest('.yt-truth-timeline-tick');
       if (tick) {
         e.stopPropagation();
         const sec = parseFloat(tick.getAttribute('data-start') || '0');
+        const claimId = tick.getAttribute('data-claim-id');
         seekToSeconds(sec);
+        if (claimId) {
+          STATE.drawerOpen = true;
+          STATE.drawerMode = 'SINGLE';
+          STATE.focusedClaimId = claimId;
+          scheduleRender();
+        }
+        return;
+      }
+
+      const showAllBtn = e.target.closest('#yt-truth-show-all-btn');
+      if (showAllBtn) {
+        e.stopPropagation();
+        STATE.drawerMode = 'ALL';
+        scheduleRender();
+        return;
+      }
+
+      const closeSingleBtn = e.target.closest('#yt-truth-close-single-btn');
+      if (closeSingleBtn) {
+        e.stopPropagation();
+        STATE.drawerOpen = false;
+        scheduleRender();
         return;
       }
 
@@ -796,18 +848,105 @@
       tickHtml.push(
         `<div class="yt-truth-timeline-tick ${vClass}" data-start="${
           c.startTime
-        }" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%;" title="${escapeHtml(
-          title
-        )}"></div>`
+        }" data-claim-id="${escapeHtml(c.id)}" style="left:${left.toFixed(
+          2
+        )}%;width:${width.toFixed(2)}%;" title="${escapeHtml(title)}"></div>`
       );
     }
     setSafeHtml(ticksContainer, tickHtml.join(''));
   }
 
+  function renderClaimCardHtml(c, isCurrent, singleModeFooterHtml = '') {
+    const vLower = c.verdict.toLowerCase();
+    const badgeLabel =
+      c.verdict === 'TRUE'
+        ? '✓ TRUE'
+        : c.verdict === 'FALSE'
+        ? '✗ FALSE'
+        : '⚠ QUESTIONABLE';
+
+    const methodLabel = c.verifyingWithSearch
+      ? '🔍 Searching Google...'
+      : c.searchVerified
+      ? '🌐 Google Search Verified'
+      : '⚡ Gemini Knowledge';
+
+    const sourcesHtml =
+      Array.isArray(c.sources) && c.sources.length > 0
+        ? `<div class="yt-truth-card-sources">
+            ${c.sources
+              .map(
+                (s) =>
+                  `<a class="yt-truth-source-link" href="${escapeHtml(
+                    s.url
+                  )}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(
+                    s.title || s.url
+                  )}">🔗 ${escapeHtml(s.title || s.url)}</a>`
+              )
+              .join('')}
+          </div>`
+        : '';
+
+    return `
+      <div class="yt-truth-claim-card card-${vLower} ${
+      isCurrent ? 'active-now' : ''
+    }" data-claim-id="${escapeHtml(c.id)}">
+        <div class="yt-truth-card-top">
+          <div class="yt-truth-card-left-meta">
+            <button type="button" class="yt-truth-seek-btn" data-start="${
+              c.startTime
+            }" title="Jump to ${formatTime(c.startTime)}">
+              ▶ ${formatTime(c.startTime)}
+            </button>
+            <span class="yt-truth-verdict-badge verdict-${vLower}">${badgeLabel}</span>
+          </div>
+          <span class="yt-truth-method-tag ${
+            c.searchVerified ? 'web-verified' : ''
+          }">${methodLabel}</span>
+        </div>
+        <div class="yt-truth-card-claim">"${escapeHtml(c.claimText)}"</div>
+        <div class="yt-truth-card-explanation">${escapeHtml(c.explanation)}</div>
+        ${sourcesHtml}
+        ${singleModeFooterHtml}
+      </div>
+    `;
+  }
+
   function renderDrawer(mounted, metrics, activeClaim) {
+    const headerEl = mounted.querySelector('#yt-truth-drawer-header');
     const summaryEl = mounted.querySelector('#yt-truth-drawer-summary');
     const listEl = mounted.querySelector('#yt-truth-claims-list');
     const filterBtns = mounted.querySelectorAll('.yt-truth-filter-btn');
+
+    const allClaims = getAllClaims();
+
+    // SINGLE-CLAIM FOCUS MODE: Show only the clicked/focused claim + a "More (All N claims)" button
+    if (STATE.drawerMode === 'SINGLE') {
+      const targetClaim =
+        allClaims.find((c) => c.id === STATE.focusedClaimId) ||
+        activeClaim ||
+        null;
+
+      if (targetClaim) {
+        if (headerEl) headerEl.classList.add('hidden');
+        const footerHtml = `
+          <div class="yt-truth-single-footer">
+            <button type="button" class="yt-truth-more-btn" id="yt-truth-show-all-btn">
+              More • Show all ${metrics.totalClaims} claims ▼
+            </button>
+            <button type="button" class="yt-truth-action-btn" id="yt-truth-close-single-btn">
+              ✕ Close
+            </button>
+          </div>
+        `;
+        setSafeHtml(listEl, renderClaimCardHtml(targetClaim, false, footerHtml));
+        return;
+      }
+      // Fallback to ALL mode if no target claim exists
+      STATE.drawerMode = 'ALL';
+    }
+
+    if (headerEl) headerEl.classList.remove('hidden');
 
     filterBtns.forEach((btn) => {
       const f = btn.getAttribute('data-filter');
@@ -856,7 +995,7 @@
       } False).`
     );
 
-    let claims = getAllClaims();
+    let claims = allClaims;
     if (STATE.activeFilter !== 'ALL') {
       claims = claims.filter((c) => c.verdict === STATE.activeFilter);
     }
@@ -872,61 +1011,7 @@
     setSafeHtml(
       listEl,
       claims
-        .map((c) => {
-          const vLower = c.verdict.toLowerCase();
-          const isCurrent = activeClaim && activeClaim.id === c.id;
-          const badgeLabel =
-            c.verdict === 'TRUE'
-              ? '✓ TRUE'
-              : c.verdict === 'FALSE'
-              ? '✗ FALSE'
-              : '⚠ QUESTIONABLE';
-
-          const methodLabel = c.verifyingWithSearch
-            ? '🔍 Searching Google...'
-            : c.searchVerified
-            ? '🌐 Google Search Verified'
-            : '⚡ Gemini Knowledge';
-
-          const sourcesHtml =
-            Array.isArray(c.sources) && c.sources.length > 0
-              ? `<div class="yt-truth-card-sources">
-                ${c.sources
-                  .map(
-                    (s) =>
-                      `<a class="yt-truth-source-link" href="${escapeHtml(
-                        s.url
-                      )}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(
-                        s.title || s.url
-                      )}">🔗 ${escapeHtml(s.title || s.url)}</a>`
-                  )
-                  .join('')}
-              </div>`
-              : '';
-
-          return `
-          <div class="yt-truth-claim-card card-${vLower} ${
-            isCurrent ? 'active-now' : ''
-          }" data-claim-id="${escapeHtml(c.id)}">
-            <div class="yt-truth-card-top">
-              <div class="yt-truth-card-left-meta">
-                <button type="button" class="yt-truth-seek-btn" data-start="${
-                  c.startTime
-                }" title="Jump to ${formatTime(c.startTime)}">
-                  ▶ ${formatTime(c.startTime)}
-                </button>
-                <span class="yt-truth-verdict-badge verdict-${vLower}">${badgeLabel}</span>
-              </div>
-              <span class="yt-truth-method-tag ${
-                c.searchVerified ? 'web-verified' : ''
-              }">${methodLabel}</span>
-            </div>
-            <div class="yt-truth-card-claim">"${escapeHtml(c.claimText)}"</div>
-            <div class="yt-truth-card-explanation">${escapeHtml(c.explanation)}</div>
-            ${sourcesHtml}
-          </div>
-        `;
-        })
+        .map((c) => renderClaimCardHtml(c, Boolean(activeClaim && activeClaim.id === c.id)))
         .join('')
     );
   }
