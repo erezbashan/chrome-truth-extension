@@ -31,7 +31,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.6',
+      version: '1.0.7',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -249,7 +249,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.6</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.7</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -289,6 +289,7 @@
             </div>
             <button type="button" class="yt-truth-action-btn" id="yt-truth-pause-btn">⏸ Pause</button>
             <button type="button" class="yt-truth-action-btn" id="yt-truth-recheck-btn">↻ Re-check</button>
+            <button type="button" class="yt-truth-close-drawer-btn" id="yt-truth-close-drawer-btn">✕ Close</button>
           </div>
         </div>
 
@@ -411,7 +412,7 @@
         return;
       }
 
-      const closeSingleBtn = e.target.closest('#yt-truth-close-single-btn');
+      const closeSingleBtn = e.target.closest('#yt-truth-close-single-btn, #yt-truth-close-drawer-btn');
       if (closeSingleBtn) {
         e.stopPropagation();
         STATE.drawerOpen = false;
