@@ -31,7 +31,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.9',
+      version: '1.0.10',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -249,7 +249,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.9</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.10</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -755,18 +755,13 @@
 
         if (STATE.error) {
           liveClaimEl.textContent = `Error: ${STATE.error}`;
-          liveExpEl.textContent = 'Click Re-check inside drawer to try again.';
+          liveExpEl.textContent = '';
         } else if (metrics.checkedCount === 0 && STATE.isAnalyzing) {
-          liveClaimEl.textContent = 'Fact-checking video captions around current playback...';
-          liveExpEl.textContent = 'Running in parallel — playback is never interrupted.';
+          liveClaimEl.textContent = 'Fact-checking video captions...';
+          liveExpEl.textContent = '';
         } else {
-          liveClaimEl.textContent = `All clear at ${formatTime(
-            currentTime
-          )} • No active factual claim right now (Opinion / Banter)`;
-          liveExpEl.textContent =
-            metrics.totalClaims > 0
-              ? `${metrics.totalClaims} claims checked so far (${metrics.trueCount} True, ${metrics.questionableCount} Questionable, ${metrics.falseCount} False) — Click bar for full breakdown & sources`
-              : 'No disputed claims detected in checked segments so far.';
+          liveClaimEl.textContent = 'No active factual claim';
+          liveExpEl.textContent = '';
         }
       }
 
