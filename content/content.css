@@ -28,6 +28,18 @@
   pointer-events: auto;
 }
 
+/* YouTube Shorts mode docking (centered above the vertical Short player, below YouTube's 56px masthead) */
+#yt-truth-root.yt-truth-shorts {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(94vw, 900px);
+  margin: 0;
+  z-index: 2050;
+  pointer-events: auto;
+}
+
 /* Main Top Bar */
 .yt-truth-bar {
   display: flex;

@@ -33,7 +33,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.12',
+      version: '1.0.13',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -138,11 +138,23 @@
     );
   }
 
+  function isShortsPage() {
+    try {
+      return window.location.pathname.startsWith('/shorts/');
+    } catch {
+      return false;
+    }
+  }
+
   function getWatchVideoId() {
     try {
       const url = new URL(window.location.href);
       if (url.pathname === '/watch') {
         return url.searchParams.get('v');
+      }
+      if (url.pathname.startsWith('/shorts/')) {
+        const match = url.pathname.match(/^\/shorts\/([a-zA-Z0-9_-]{8,15})/);
+        return match ? match[1] : null;
       }
       return null;
     } catch {
@@ -179,6 +191,7 @@
 
     const fsEl = document.fullscreenElement;
     if (fsEl) {
+      rootEl.classList.remove('yt-truth-shorts');
       rootEl.classList.add('yt-truth-fullscreen');
       if (rootEl.parentNode !== fsEl) {
         fsEl.prepend(rootEl);
@@ -187,6 +200,21 @@
     }
 
     rootEl.classList.remove('yt-truth-fullscreen');
+
+    // YouTube Shorts page mode (/shorts/<videoId>)
+    if (isShortsPage()) {
+      rootEl.classList.add('yt-truth-shorts');
+      const shortsHost =
+        document.querySelector('ytd-shorts') ||
+        document.getElementById('page-manager') ||
+        document.body;
+      if (shortsHost && rootEl.parentNode !== shortsHost) {
+        shortsHost.prepend(rootEl);
+      }
+      return rootEl;
+    }
+
+    rootEl.classList.remove('yt-truth-shorts');
 
     const watchFlexy = document.querySelector('ytd-watch-flexy');
     const isTheater = watchFlexy && watchFlexy.hasAttribute('theater');
@@ -251,7 +279,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.12</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.13</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -472,7 +500,9 @@
       const videoTitle = STATE.metadata?.title || document.title.replace(/ - YouTube$/, '');
       const currentTimeSec = videoEl ? Math.floor(videoEl.currentTime || 0) : 0;
       const videoUrl = STATE.videoId
-        ? `https://www.youtube.com/watch?v=${STATE.videoId}&t=${currentTimeSec}s`
+        ? isShortsPage()
+          ? `https://www.youtube.com/shorts/${STATE.videoId}`
+          : `https://www.youtube.com/watch?v=${STATE.videoId}&t=${currentTimeSec}s`
         : window.location.href;
 
       const subject = `[Truth Bar v${version}] ${category}: ${videoTitle.slice(0, 55)}`;
@@ -1234,6 +1264,12 @@
    * (so starting a video in the middle reads the real middle timestamp, not 0:00).
    */
   async function waitForInitialPlaybackPosition(runToken) {
+    // Shorts always start at 0:00 and are 15-60s long, so start checking immediately without delay
+    if (isShortsPage()) {
+      bindVideoListeners();
+      return;
+    }
+
     // Check if URL has explicit ?t= param first
     try {
       const urlT = new URL(window.location.href).searchParams.get('t');
@@ -1341,7 +1377,12 @@
   }
 
   function bindVideoListeners() {
-    const v = document.querySelector('video.html5-main-video');
+    const v = isShortsPage()
+      ? document.querySelector('#shorts-player video.html5-main-video') ||
+        document.querySelector('ytd-reel-video-renderer[is-active] video') ||
+        document.querySelector('video.html5-main-video')
+      : document.querySelector('#movie_player video.html5-main-video') ||
+        document.querySelector('video.html5-main-video');
     if (v && v !== videoEl) {
       videoEl = v;
       videoEl.addEventListener('timeupdate', () => {

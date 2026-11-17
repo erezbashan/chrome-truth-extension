@@ -224,7 +224,9 @@
    * Retrieve video metadata + timestamped CC transcript for targetVideoId
    */
   async function getVideoDataAndTranscript(targetVideoId) {
-    const player = document.getElementById('movie_player');
+    const player =
+      document.getElementById('shorts-player') ||
+      document.getElementById('movie_player');
     let pagePlayerResponse = null;
 
     if (player && typeof player.getPlayerResponse === 'function') {
@@ -329,12 +331,18 @@
   window.addEventListener('YT_TRUTH_SEEK_TO', (event) => {
     const seconds = Number(event.detail?.seconds);
     if (Number.isNaN(seconds)) return;
-    const player = document.getElementById('movie_player');
+    const isShorts = window.location.pathname.startsWith('/shorts/');
+    const player = isShorts
+      ? document.getElementById('shorts-player') || document.getElementById('movie_player')
+      : document.getElementById('movie_player');
     if (player && typeof player.seekTo === 'function') {
       player.seekTo(seconds, true);
       return;
     }
-    const video = document.querySelector('video.html5-main-video');
+    const video =
+      document.querySelector('#shorts-player video.html5-main-video') ||
+      document.querySelector('ytd-reel-video-renderer[is-active] video') ||
+      document.querySelector('video.html5-main-video');
     if (video) {
       video.currentTime = seconds;
     }
