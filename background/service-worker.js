@@ -375,6 +375,7 @@ INSTRUCTIONS:
 1. LANGUAGE: Write all output text fields ("irrelevantReason", "chunkSummary", "claimText", "explanation") in the SAME language as the transcript (language code: "${languageCode || 'en'}"). If the language cannot be determined, use English.
 2. VIDEO RELEVANCE ("isVideoRelevant"):
    - Set "isVideoRelevant" to FALSE ONLY if this video is clearly NOT applicable for factual verification — such as a music video / song lyrics, fictional movie / drama / story, comedy sketch, ASMR, or pure entertainment/gameplay with zero factual assertions about the real world.
+   - If "isVideoRelevant" is FALSE, set "irrelevantReason" to a short 2-4 word label (e.g., "Fictional TV Clip", "Music Video", "Comedy Sketch").
    - Set "isVideoRelevant" to TRUE if the video discusses real-world events, news, politics, history, science, health, economics, technology, biographies, educational content, product claims, or commentary with checkable facts.
 3. FACTUAL DENSITY ("chunkFactualPercentage"):
    - Estimate what percentage (0 to 100) of this transcript chunk consists of checkable factual statements about the real world versus opinions, jokes, greetings, sponsor reads, rhetorical questions, or casual banter.

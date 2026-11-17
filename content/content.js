@@ -33,7 +33,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.15',
+      version: '1.0.16',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -279,7 +279,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.15</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.16</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -846,19 +846,17 @@
     // 3. Video is Non-Relevant (Music, Fiction, Entertainment, etc.)
     else if (!STATE.missingApiKey && !metrics.isRelevant) {
       barEl.className = 'yt-truth-bar state-na';
-      relevancePill.textContent = '0% Checkable • N/A';
+      relevancePill.textContent = '0% Checkable';
       scoreValEl.textContent = 'N/A';
       scoreValEl.className = 'yt-truth-score-value';
       setSafeHtml(countersEl, '');
       verdictBadge.style.display = 'none';
       liveTimeEl.style.display = 'none';
-      liveClaimEl.textContent = `Not applicable for fact-checking (${
-        STATE.irrelevantReason || 'Music / Fiction / Entertainment'
-      })`;
-      liveExpEl.textContent = 'This video does not make checkable real-world factual assertions.';
+      liveClaimEl.textContent = STATE.irrelevantReason || 'Not applicable (Entertainment / Fiction)';
+      liveExpEl.textContent = '';
       searchingPill.style.display = 'none';
       spinnerEl.style.display = 'none';
-      progressTextEl.textContent = 'Skipped (N/A)';
+      progressTextEl.textContent = 'Skipped';
     }
 
     // 4. Normal Factual Video
