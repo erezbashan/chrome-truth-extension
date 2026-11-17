@@ -119,16 +119,43 @@
   }
 
   /**
-   * Choose the best caption track:
-   * Prefer manual captions over auto-generated (ASR).
+   * Choose the best caption track using YouTube's defaultAudioTrackIndex / original audio track (.4)
+   * so multi-language auto-dubbed videos don't default to alphabetical index 0 ("Arabic").
    */
-  function selectBestCaptionTrack(tracks) {
-    if (!Array.isArray(tracks) || tracks.length === 0) return null;
+  function selectBestCaptionTrack(renderer) {
+    const tracks = Array.isArray(renderer)
+      ? renderer
+      : renderer?.captionTracks || [];
+    if (tracks.length === 0) return null;
+    if (tracks.length === 1) return tracks[0];
+
+    const audioTracks = renderer?.audioTracks || [];
+    const defaultIdx =
+      typeof renderer?.defaultAudioTrackIndex === 'number'
+        ? renderer.defaultAudioTrackIndex
+        : -1;
+    const origAudio =
+      (defaultIdx >= 0 && audioTracks[defaultIdx]) ||
+      audioTracks.find((a) => String(a.audioTrackId || '').endsWith('.4')) ||
+      audioTracks[0];
+
+    if (
+      origAudio &&
+      Array.isArray(origAudio.captionTrackIndices) &&
+      origAudio.captionTrackIndices.length > 0
+    ) {
+      const primaryTrackIdx = origAudio.captionTrackIndices[0];
+      if (tracks[primaryTrackIdx]) {
+        return tracks[primaryTrackIdx];
+      }
+    }
+
+    const isPreferredLang = (code) => /^(en|iw|he)(-|$)/i.test(String(code || ''));
     const manualTracks = tracks.filter((t) => t.kind !== 'asr');
     if (manualTracks.length > 0) {
-      return manualTracks[0];
+      return manualTracks.find((t) => isPreferredLang(t.languageCode)) || manualTracks[0];
     }
-    return tracks[0];
+    return tracks.find((t) => isPreferredLang(t.languageCode)) || tracks[0];
   }
 
   /**
@@ -265,20 +292,20 @@
       keywords: Array.isArray(details.keywords) ? details.keywords.slice(0, 15) : []
     };
 
-    const innertubeTracks =
-      innertubePR?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-    const pageTracks =
-      pagePlayerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+    const innertubeRenderer =
+      innertubePR?.captions?.playerCaptionsTracklistRenderer;
+    const pageRenderer =
+      pagePlayerResponse?.captions?.playerCaptionsTracklistRenderer;
 
     let segments = [];
-    let chosenTrack = selectBestCaptionTrack(innertubeTracks);
+    let chosenTrack = selectBestCaptionTrack(innertubeRenderer);
 
     if (chosenTrack) {
       segments = await fetchSegmentsFromTrack(chosenTrack);
     }
 
-    if (segments.length === 0 && pageTracks.length > 0) {
-      chosenTrack = selectBestCaptionTrack(pageTracks);
+    if (segments.length === 0 && pageRenderer?.captionTracks?.length > 0) {
+      chosenTrack = selectBestCaptionTrack(pageRenderer);
       segments = await fetchSegmentsFromTrack(chosenTrack);
     }
 

@@ -222,6 +222,43 @@ function parseXmlTranscriptSW(xmlText) {
   return segments;
 }
 
+function selectBestCaptionTrackSW(renderer) {
+  const tracks = renderer?.captionTracks || [];
+  if (tracks.length === 0) return null;
+  if (tracks.length === 1) return tracks[0];
+
+  // 1. Check YouTube's defaultAudioTrackIndex / original audioTrack (.4) -> captionTrackIndices[0]
+  //    (Avoids picking "Arabic" first on multi-language auto-dubbed videos where tracks are sorted alphabetically!)
+  const audioTracks = renderer?.audioTracks || [];
+  const defaultIdx =
+    typeof renderer?.defaultAudioTrackIndex === 'number'
+      ? renderer.defaultAudioTrackIndex
+      : -1;
+  const origAudio =
+    (defaultIdx >= 0 && audioTracks[defaultIdx]) ||
+    audioTracks.find((a) => String(a.audioTrackId || '').endsWith('.4')) ||
+    audioTracks[0];
+
+  if (
+    origAudio &&
+    Array.isArray(origAudio.captionTrackIndices) &&
+    origAudio.captionTrackIndices.length > 0
+  ) {
+    const primaryTrackIdx = origAudio.captionTrackIndices[0];
+    if (tracks[primaryTrackIdx]) {
+      return tracks[primaryTrackIdx];
+    }
+  }
+
+  // 2. Fallback: prefer manual tracks, and prefer English (en*) or Hebrew (iw/he) over alphabetical index 0
+  const isPreferredLang = (code) => /^(en|iw|he)(-|$)/i.test(String(code || ''));
+  const manual = tracks.filter((t) => t.kind !== 'asr');
+  if (manual.length > 0) {
+    return manual.find((t) => isPreferredLang(t.languageCode)) || manual[0];
+  }
+  return tracks.find((t) => isPreferredLang(t.languageCode)) || tracks[0];
+}
+
 async function fetchTranscriptFromServiceWorker(videoId) {
   const clients = [
     { clientName: 'IOS', clientVersion: '20.10.4' },
@@ -247,12 +284,10 @@ async function fetchTranscriptFromServiceWorker(videoId) {
       });
       if (!resp.ok) continue;
       const pr = await resp.json();
-      const tracks =
-        pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-      if (tracks.length === 0) continue;
+      const renderer = pr?.captions?.playerCaptionsTracklistRenderer;
+      const chosen = selectBestCaptionTrackSW(renderer);
+      if (!chosen) continue;
 
-      const manual = tracks.filter((t) => t.kind !== 'asr');
-      const chosen = manual.length > 0 ? manual[0] : tracks[0];
       const tResp = await fetch(chosen.baseUrl);
       if (!tResp.ok) continue;
       const xml = await tResp.text();
