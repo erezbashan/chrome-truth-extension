@@ -378,6 +378,7 @@ INSTRUCTIONS:
    - Set "isVideoRelevant" to TRUE if the video discusses real-world events, news, politics, history, science, health, economics, technology, biographies, educational content, product claims, or commentary with checkable facts.
 3. FACTUAL DENSITY ("chunkFactualPercentage"):
    - Estimate what percentage (0 to 100) of this transcript chunk consists of checkable factual statements about the real world versus opinions, jokes, greetings, sponsor reads, rhetorical questions, or casual banter.
+   - CONSISTENCY RULE: If "chunkFactualPercentage" > 0, you MUST extract the checkable factual claim(s) in the "claims" array below. Only return an empty "claims" array ([]) when there are truly 0 checkable factual claims (in which case "chunkFactualPercentage" MUST be 0).
 4. EXTRACT ALL FACTUAL CLAIMS ("claims"):
    - Do NOT summarize the chunk into just 1 or 2 takeaways! Extract EVERY distinct verifiable factual claim made in this chunk.
    - Skip pure subjective opinions ("I love this movie"), jokes/sarcasm, greetings, and transitional filler.
@@ -481,11 +482,11 @@ Respond ONLY with valid JSON matching this schema:
     isVideoRelevant: parsed.isVideoRelevant !== false,
     irrelevantReason: String(parsed.irrelevantReason || '').trim(),
     chunkFactualPercentage:
-      typeof parsed.chunkFactualPercentage === 'number'
-        ? Math.max(0, Math.min(100, Math.round(parsed.chunkFactualPercentage)))
-        : normalizedClaims.length > 0
-        ? 30
-        : 0,
+      normalizedClaims.length === 0
+        ? 0
+        : typeof parsed.chunkFactualPercentage === 'number'
+        ? Math.max(5, Math.min(100, Math.round(parsed.chunkFactualPercentage)))
+        : 30,
     chunkSummary: String(parsed.chunkSummary || '').trim(),
     claims: normalizedClaims
   };

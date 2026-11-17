@@ -33,7 +33,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.14',
+      version: '1.0.15',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -279,7 +279,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.14</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.15</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -1238,6 +1238,16 @@
    */
   function getNeededWindowAtCurrentTime() {
     if (!STATE.hasCaptions || !STATE.segments.length) return null;
+    const lastVideoSegEnd = STATE.segments[STATE.segments.length - 1].end;
+    const windowDuration = STATE.settings.chunkDurationSec || 900;
+
+    // For Shorts or any video shorter than a single 15-minute window, always check from 0:00 in 1 call
+    // (Prevents checking only the last few seconds of a Short if refreshed near the end or during Shorts scroll)
+    if (isShortsPage() || lastVideoSegEnd <= windowDuration) {
+      if (Object.keys(STATE.analyzedChunks).length > 0) return null;
+      return buildOnDemandWindow(0);
+    }
+
     const currentTime = videoEl ? videoEl.currentTime || 0 : 0;
     const lookahead = STATE.settings.lookaheadBufferSec || 60;
 
@@ -1247,7 +1257,6 @@
     }
 
     // Only prefetch the next window if the user has watched up to within 60s of the end of the current window
-    const lastVideoSegEnd = STATE.segments[STATE.segments.length - 1].end;
     if (
       covering.endTime < lastVideoSegEnd - 5 &&
       currentTime >= covering.endTime - lookahead &&
