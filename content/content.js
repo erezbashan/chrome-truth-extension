@@ -10,7 +10,7 @@
 (() => {
   if (window.__ytTruthContentInitialized) return;
   window.__ytTruthContentInitialized = true;
-  console.info('[Truth Bar for YouTube] Content script initialized (v1.0.17)');
+  console.info('[Truth Bar for YouTube] Content script initialized (v1.0.18)');
 
   const STATE = {
     videoId: null,
@@ -34,7 +34,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.17',
+      version: '1.0.18',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -218,46 +218,39 @@
     rootEl.classList.remove('yt-truth-shorts');
 
     const watchFlexy = document.querySelector('ytd-watch-flexy');
-    const isTheater = Boolean(
-      watchFlexy &&
-        (watchFlexy.hasAttribute('theater') ||
-          watchFlexy.hasAttribute('full-bleed-player'))
-    );
-    const moviePlayer =
-      document.getElementById('movie_player') ||
-      document.querySelector('ytd-player');
+    const isTheater = Boolean(watchFlexy && watchFlexy.hasAttribute('theater'));
+    const moviePlayer = document.getElementById('movie_player');
 
     const fullBleed =
       document.getElementById('full-bleed-container') ||
       document.getElementById('player-full-bleed-container') ||
       document.getElementById('player-theater-container');
 
-    // Use full-bleed container whenever theater mode is active OR movie_player is physically inside fullBleed
+    // Use full-bleed container only when theater mode is active OR movie_player is physically inside fullBleed
     if (
       fullBleed &&
       fullBleed.parentNode &&
+      fullBleed.getBoundingClientRect().height > 40 &&
       (isTheater || (moviePlayer && fullBleed.contains(moviePlayer)))
     ) {
       if (rootEl.nextSibling !== fullBleed) {
         fullBleed.parentNode.insertBefore(rootEl, fullBleed);
       }
-      return rootEl;
+      if (rootEl.getBoundingClientRect().height > 0) {
+        return rootEl;
+      }
     }
 
-    // Standard mode: find the visible player container that holds #movie_player
+    // Standard mode: insert right above #player inside #primary-inner
     const candidateEls = [
       document.querySelector('#primary-inner > #player'),
       document.getElementById('player-container-outer'),
-      document.getElementById('player'),
-      document.querySelector('ytd-player')
+      document.getElementById('player')
     ].filter(Boolean);
 
     const visiblePlayerEl =
-      candidateEls.find(
-        (el) =>
-          (moviePlayer && el.contains(moviePlayer)) ||
-          el.getBoundingClientRect().height > 40
-      ) || candidateEls[0];
+      candidateEls.find((el) => el.getBoundingClientRect().height > 40) ||
+      candidateEls[0];
 
     if (visiblePlayerEl && visiblePlayerEl.parentNode) {
       if (rootEl.nextSibling !== visiblePlayerEl) {
@@ -266,15 +259,6 @@
       if (rootEl.getBoundingClientRect().height > 0) {
         return rootEl;
       }
-    }
-
-    // Ultimate fallback: dock fixed at the top (like Shorts mode) so the bar is ALWAYS visible
-    if (document.body) {
-      rootEl.classList.add('yt-truth-shorts');
-      if (rootEl.parentNode !== document.body) {
-        document.body.prepend(rootEl);
-      }
-      return rootEl;
     }
 
     return null;
@@ -311,7 +295,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.17</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.18</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -1477,6 +1461,7 @@
         STATE.isVideoRelevant = cfgResp.cache.isVideoRelevant !== false;
         STATE.irrelevantReason = cfgResp.cache.irrelevantReason || '';
       }
+      scheduleRender();
     }
 
     // 2. Fetch video metadata + Closed Captions (CC) via Service Worker first, with Page Bridge fallback
