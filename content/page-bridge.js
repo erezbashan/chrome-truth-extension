@@ -1,18 +1,29 @@
 /**
- * YouTube Truth Bar — Page Bridge (Runs in MAIN world)
+ * Truth Bar — Page Bridge (Runs in MAIN world on YouTube, Coursera, and edX)
  *
- * Bridges YouTube's internal player API (`#movie_player`, Innertube `/youtubei/v1/player`)
- * with the isolated content script via CustomEvents.
+ * Bridges platform video players and caption/transcript sources with the
+ * isolated content script via CustomEvents:
+ *  - YouTube: `#movie_player`, `#shorts-player`, Innertube `/youtubei/v1/player`
+ *  - Coursera: Video.js `<video>`, `<track src="*.vtt">`, `video.textTracks`, `.rc-Transcript`
+ *  - edX: `div.video[data-metadata]` (`transcriptTranslationUrl`, embedded YouTube streams, `<track>`, `.subtitles-menu`)
  *
- * IMPORTANT: Uses pure-JS regex/JSON parsing (zero `innerHTML` or `DOMParser`) so YouTube's
- * strict TrustedTypes Content Security Policy never blocks transcript parsing.
+ * IMPORTANT: Uses pure-JS regex/JSON parsing (zero `innerHTML` or `DOMParser`) so strict
+ * TrustedTypes Content Security Policies never block transcript parsing.
  */
 (() => {
   if (window.__ytTruthBridgeInitialized) return;
   window.__ytTruthBridgeInitialized = true;
 
+  function getPlatform() {
+    const host = (window.location.hostname || '').toLowerCase();
+    if (host.endsWith('youtube.com')) return 'youtube';
+    if (host.endsWith('coursera.org')) return 'coursera';
+    if (host.endsWith('edx.org')) return 'edx';
+    return 'generic';
+  }
+
   /**
-   * Pure-JS HTML entity decoder (safe under YouTube's TrustedTypes CSP)
+   * Pure-JS HTML entity decoder (safe under TrustedTypes CSP)
    */
   function decodeHtmlEntities(str) {
     if (!str) return '';
@@ -31,6 +42,77 @@
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&amp;/g, '&');
+  }
+
+  /**
+   * Parse HH:MM:SS.mmm or MM:SS.mmm or HH:MM:SS,mmm timestamp string into seconds
+   */
+  function parseTimestampToSeconds(ts) {
+    if (!ts) return NaN;
+    const clean = String(ts).trim().replace(',', '.');
+    const parts = clean.split(':');
+    if (parts.length === 3) {
+      return (
+        parseInt(parts[0], 10) * 3600 +
+        parseInt(parts[1], 10) * 60 +
+        parseFloat(parts[2])
+      );
+    }
+    if (parts.length === 2) {
+      return parseInt(parts[0], 10) * 60 + parseFloat(parts[1]);
+    }
+    return parseFloat(clean);
+  }
+
+  /**
+   * Universal WebVTT (.vtt) and SubRip (.srt) transcript parser (used by Coursera, edX, and HTML5 <track>)
+   */
+  function parseVttOrSrtTranscript(rawText) {
+    if (!rawText || typeof rawText !== 'string') return [];
+    const lines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const segments = [];
+    const arrowRegex =
+      /((?:\d{1,2}:)?\d{1,2}:\d{2}[.,]\d{1,3})\s*-->\s*((?:\d{1,2}:)?\d{1,2}:\d{2}[.,]\d{1,3})/;
+
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      const match = line.match(arrowRegex);
+      if (!match) {
+        i++;
+        continue;
+      }
+
+      const start = parseTimestampToSeconds(match[1]);
+      const end = parseTimestampToSeconds(match[2]);
+      i++;
+
+      const textLines = [];
+      while (i < lines.length && lines[i].trim() !== '' && !arrowRegex.test(lines[i])) {
+        textLines.push(lines[i].trim());
+        i++;
+      }
+
+      const cleanedText = decodeHtmlEntities(
+        textLines
+          .join(' ')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      );
+
+      if (cleanedText && Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+        const dur = Math.max(0.5, end - start);
+        segments.push({
+          start: Math.round(start * 10) / 10,
+          duration: Math.round(dur * 10) / 10,
+          end: Math.round(end * 10) / 10,
+          text: cleanedText
+        });
+      }
+    }
+
+    return segments;
   }
 
   /**
@@ -65,14 +147,43 @@
   }
 
   /**
-   * Pure-JS XML timedtext parser (handles both <text start="" dur=""> and <p t="" d=""> formats
-   * without DOMParser, avoiding TrustedHTML CSP errors on www.youtube.com)
+   * Parse edX transcript JSON format: { start: [ms, ...], end: [ms, ...], text: [str, ...] }
+   */
+  function parseEdxJsonTranscript(jsonData) {
+    try {
+      const data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+      if (!data || !Array.isArray(data.start) || !Array.isArray(data.text)) return [];
+      const segments = [];
+      for (let i = 0; i < data.text.length; i++) {
+        const rawText = decodeHtmlEntities(String(data.text[i] || ''))
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!rawText) continue;
+        const startMs = Number(data.start[i] ?? 0);
+        const endMs = Number(data.end?.[i] ?? startMs + 3000);
+        const start = Math.max(0, startMs / 1000);
+        const end = Math.max(start + 0.5, endMs / 1000);
+        segments.push({
+          start: Math.round(start * 10) / 10,
+          duration: Math.round((end - start) * 10) / 10,
+          end: Math.round(end * 10) / 10,
+          text: rawText
+        });
+      }
+      return segments;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Pure-JS XML timedtext parser (handles both <text start="" dur=""> and <p t="" d=""> formats)
    */
   function parseXmlTranscript(xmlText) {
     if (!xmlText || typeof xmlText !== 'string') return [];
     const segments = [];
 
-    // Format 1: <text start="0.67" dur="3.31">...</text>
     const textRegex = /<text\b([^>]*)>([\s\S]*?)<\/text>/gi;
     let match;
     while ((match = textRegex.exec(xmlText)) !== null) {
@@ -94,7 +205,6 @@
     }
     if (segments.length > 0) return segments;
 
-    // Format 2: <p t="1200" d="3400"><s>...</s></p>
     const pRegex = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
     while ((match = pRegex.exec(xmlText)) !== null) {
       const attrs = match[1];
@@ -119,8 +229,31 @@
   }
 
   /**
+   * Parse any raw transcript payload (WebVTT, SRT, XML, JSON3, edX JSON)
+   */
+  function parseAnyTranscriptText(rawText) {
+    if (!rawText || typeof rawText !== 'string') return [];
+    const trimmed = rawText.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('{')) {
+      const edxSegs = parseEdxJsonTranscript(trimmed);
+      if (edxSegs.length > 0) return edxSegs;
+      const json3Segs = parseJson3Transcript(trimmed);
+      if (json3Segs.length > 0) return json3Segs;
+    }
+    if (trimmed.includes('-->')) {
+      const vttSegs = parseVttOrSrtTranscript(trimmed);
+      if (vttSegs.length > 0) return vttSegs;
+    }
+    if (trimmed.startsWith('<')) {
+      const xmlSegs = parseXmlTranscript(trimmed);
+      if (xmlSegs.length > 0) return xmlSegs;
+    }
+    return [];
+  }
+
+  /**
    * Choose the best caption track using YouTube's defaultAudioTrackIndex / original audio track (.4)
-   * so multi-language auto-dubbed videos don't default to alphabetical index 0 ("Arabic").
    */
   function selectBestCaptionTrack(renderer) {
     const tracks = Array.isArray(renderer)
@@ -158,10 +291,6 @@
     return tracks.find((t) => isPreferredLang(t.languageCode)) || tracks[0];
   }
 
-  /**
-   * Fetch playerResponse via YouTube's Innertube /youtubei/v1/player endpoint using
-   * IOS or ANDROID client contexts (whose timedtext URLs do not require WEB 'pot' tokens).
-   */
   async function fetchInnertubePlayerResponse(videoId) {
     const clients = [
       { clientName: 'IOS', clientVersion: '20.10.4' },
@@ -203,26 +332,17 @@
   async function fetchSegmentsFromTrack(track) {
     if (!track || !track.baseUrl) return [];
 
-    // 1. Try direct baseUrl (returns clean XML on IOS/ANDROID Innertube tracks)
     try {
       const resp = await fetch(track.baseUrl, { credentials: 'omit' });
       if (resp.ok) {
         const text = await resp.text();
-        if (text && text.trim().length > 0) {
-          if (text.trim().startsWith('<')) {
-            const segs = parseXmlTranscript(text);
-            if (segs.length > 0) return segs;
-          } else if (text.trim().startsWith('{')) {
-            const segs = parseJson3Transcript(text);
-            if (segs.length > 0) return segs;
-          }
-        }
+        const segs = parseAnyTranscriptText(text);
+        if (segs.length > 0) return segs;
       }
     } catch {
       // continue
     }
 
-    // 2. Try fmt=json3
     try {
       const json3Url = track.baseUrl.includes('fmt=')
         ? track.baseUrl.replace(/fmt=[^&]+/, 'fmt=json3')
@@ -230,15 +350,8 @@
       const resp = await fetch(json3Url, { credentials: 'omit' });
       if (resp.ok) {
         const text = await resp.text();
-        if (text && text.trim().length > 0) {
-          if (text.trim().startsWith('{')) {
-            const segs = parseJson3Transcript(text);
-            if (segs.length > 0) return segs;
-          } else if (text.trim().startsWith('<')) {
-            const segs = parseXmlTranscript(text);
-            if (segs.length > 0) return segs;
-          }
-        }
+        const segs = parseAnyTranscriptText(text);
+        if (segs.length > 0) return segs;
       }
     } catch {
       // continue
@@ -248,9 +361,236 @@
   }
 
   /**
-   * Retrieve video metadata + timestamped CC transcript for targetVideoId
+   * Extract captions from an HTML5 <video> element via <track src="..."> or video.textTracks cues.
+   * Used on Coursera, edX, and generic HTML5 video players.
    */
-  async function getVideoDataAndTranscript(targetVideoId) {
+  async function extractHtml5VideoTranscript(video) {
+    if (!video) return null;
+    const isPref = (lang) => /^(en|iw|he)(-|$)/i.test(String(lang || ''));
+
+    // 1. Check <track> DOM elements with `src` URLs (WebVTT / SRT)
+    const trackEls = Array.from(video.querySelectorAll('track[src]')).filter((t) => {
+      const kind = (t.getAttribute('kind') || 'subtitles').toLowerCase();
+      return kind === 'captions' || kind === 'subtitles' || kind === '';
+    });
+
+    trackEls.sort((a, b) => {
+      const aDefault = a.hasAttribute('default') || a.track?.mode === 'showing' ? 1 : 0;
+      const bDefault = b.hasAttribute('default') || b.track?.mode === 'showing' ? 1 : 0;
+      if (aDefault !== bDefault) return bDefault - aDefault;
+      const aPref = isPref(a.getAttribute('srclang')) ? 1 : 0;
+      const bPref = isPref(b.getAttribute('srclang')) ? 1 : 0;
+      return bPref - aPref;
+    });
+
+    for (const trackEl of trackEls) {
+      const rawSrc = trackEl.getAttribute('src');
+      if (!rawSrc) continue;
+      try {
+        const absUrl = new URL(rawSrc, window.location.href).href;
+        const resp = await fetch(absUrl, { credentials: 'omit' });
+        if (resp.ok) {
+          const text = await resp.text();
+          const segments = parseAnyTranscriptText(text);
+          if (segments.length > 0) {
+            return {
+              languageCode: trackEl.getAttribute('srclang') || 'en',
+              languageName: trackEl.getAttribute('label') || trackEl.getAttribute('srclang') || 'en',
+              segments
+            };
+          }
+        }
+      } catch {
+        // Fallback to textTracks below if CORS blocks direct fetch
+      }
+    }
+
+    // 2. Inspect video.textTracks (browser-loaded VTTCue list)
+    if (video.textTracks && video.textTracks.length > 0) {
+      const textTracks = Array.from(video.textTracks).filter(
+        (t) => t.kind === 'captions' || t.kind === 'subtitles' || !t.kind
+      );
+      if (textTracks.length > 0) {
+        textTracks.sort((a, b) => {
+          const aShow = a.mode === 'showing' ? 2 : a.mode === 'hidden' ? 1 : 0;
+          const bShow = b.mode === 'showing' ? 2 : b.mode === 'hidden' ? 1 : 0;
+          if (aShow !== bShow) return bShow - aShow;
+          const aPref = isPref(a.language) ? 1 : 0;
+          const bPref = isPref(b.language) ? 1 : 0;
+          return bPref - aPref;
+        });
+
+        const chosen = textTracks[0];
+        if (chosen.mode === 'disabled') {
+          chosen.mode = 'hidden';
+        }
+
+        // Wait up to 1.6s for Chrome to load the TextTrack cues
+        for (let attempt = 0; attempt < 8; attempt++) {
+          if (chosen.cues && chosen.cues.length > 0) break;
+          await new Promise((r) => setTimeout(r, 200));
+        }
+
+        if (chosen.cues && chosen.cues.length > 0) {
+          const segments = [];
+          for (let i = 0; i < chosen.cues.length; i++) {
+            const cue = chosen.cues[i];
+            const text = decodeHtmlEntities(String(cue.text || ''))
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            if (!text) continue;
+            const start = Number(cue.startTime || 0);
+            const end = Number(cue.endTime || start + 3);
+            segments.push({
+              start: Math.round(start * 10) / 10,
+              duration: Math.round(Math.max(0.5, end - start) * 10) / 10,
+              end: Math.round(end * 10) / 10,
+              text
+            });
+          }
+          if (segments.length > 0) {
+            return {
+              languageCode: chosen.language || 'en',
+              languageName: chosen.label || chosen.language || 'en',
+              segments
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract transcript from Coursera interactive transcript DOM (.rc-Transcript / .rc-Phrase) if present
+   */
+  function extractCourseraDomTranscript() {
+    const phraseEls = Array.from(
+      document.querySelectorAll('.rc-Phrase, [data-cue], [data-phrase-index]')
+    );
+    if (phraseEls.length === 0) return null;
+
+    const segments = [];
+    for (let i = 0; i < phraseEls.length; i++) {
+      const el = phraseEls[i];
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      const startAttr =
+        el.getAttribute('data-start') ||
+        el.getAttribute('data-timestamp') ||
+        el.getAttribute('data-time');
+      let start = startAttr ? parseFloat(startAttr) : NaN;
+      if (start > 10000) start = start / 1000;
+      if (!Number.isFinite(start)) {
+        start = i * 4;
+      }
+      segments.push({
+        start: Math.round(start * 10) / 10,
+        duration: 4,
+        end: Math.round((start + 4) * 10) / 10,
+        text
+      });
+    }
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (segments[i + 1].start > segments[i].start) {
+        segments[i].end = segments[i + 1].start;
+        segments[i].duration =
+          Math.round(Math.max(0.5, segments[i].end - segments[i].start) * 10) / 10;
+      }
+    }
+    return segments.length > 0 ? { languageCode: 'en', languageName: 'en', segments } : null;
+  }
+
+  /**
+   * Extract transcript on edX from `div.video[data-metadata]` or `.subtitles-menu` DOM
+   */
+  async function extractEdxTranscript() {
+    const videoContainer = document.querySelector(
+      '.video[data-metadata], [data-metadata*="transcript"]'
+    );
+    if (videoContainer) {
+      try {
+        const meta = JSON.parse(videoContainer.getAttribute('data-metadata') || '{}');
+        const lang =
+          meta.transcriptLanguage ||
+          (meta.transcriptLanguages && Object.keys(meta.transcriptLanguages)[0]) ||
+          'en';
+
+        // 1. Try edX transcriptTranslationUrl endpoint
+        if (meta.transcriptTranslationUrl) {
+          const rawUrl = String(meta.transcriptTranslationUrl).replace('__lang__', lang);
+          const absUrl = new URL(rawUrl, window.location.href).href;
+          const resp = await fetch(absUrl, { credentials: 'include' });
+          if (resp.ok) {
+            const text = await resp.text();
+            const segments = parseAnyTranscriptText(text);
+            if (segments.length > 0) {
+              return {
+                languageCode: lang,
+                languageName: meta.transcriptLanguages?.[lang] || lang,
+                segments
+              };
+            }
+          }
+        }
+
+        // 2. If edX embeds a YouTube video in `meta.streams` ("1.00:VIDEO_ID"), fetch via Innertube
+        if (meta.streams) {
+          const ytMatch = String(meta.streams).match(
+            /(?:1\.00|1\.0|0\.75|1\.25|1\.50):([a-zA-Z0-9_-]{11})/
+          );
+          if (ytMatch && ytMatch[1]) {
+            const ytRes = await getYouTubeVideoDataAndTranscript(ytMatch[1]);
+            if (ytRes && ytRes.hasCaptions && ytRes.segments.length > 0) {
+              return ytRes;
+            }
+          }
+        }
+      } catch {
+        // continue to DOM fallback
+      }
+    }
+
+    // 3. Fallback: edX DOM subtitles list (.subtitles-menu li span[data-start])
+    const subItems = Array.from(
+      document.querySelectorAll('.subtitles-menu li [data-start], .subtitles li [data-start]')
+    );
+    if (subItems.length > 0) {
+      const segments = [];
+      for (let i = 0; i < subItems.length; i++) {
+        const el = subItems[i];
+        const rawStart = parseFloat(el.getAttribute('data-start') || '0');
+        const start = rawStart > 1000 ? rawStart / 1000 : rawStart;
+        const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!text) continue;
+        segments.push({
+          start: Math.round(start * 10) / 10,
+          duration: 3.5,
+          end: Math.round((start + 3.5) * 10) / 10,
+          text
+        });
+      }
+      for (let i = 0; i < segments.length - 1; i++) {
+        if (segments[i + 1].start > segments[i].start) {
+          segments[i].end = segments[i + 1].start;
+          segments[i].duration =
+            Math.round(Math.max(0.5, segments[i].end - segments[i].start) * 10) / 10;
+        }
+      }
+      if (segments.length > 0) {
+        return { languageCode: 'en', languageName: 'en', segments };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * YouTube-specific metadata & caption retrieval
+   */
+  async function getYouTubeVideoDataAndTranscript(targetVideoId) {
     const player =
       document.getElementById('shorts-player') ||
       document.getElementById('movie_player');
@@ -270,9 +610,7 @@
       pagePlayerResponse = window.ytInitialPlayerResponse;
     }
 
-    // Fetch IOS/ANDROID Innertube playerResponse for non-pot-restricted caption tracks
     const innertubePR = await fetchInnertubePlayerResponse(targetVideoId);
-    const activePR = innertubePR || pagePlayerResponse || {};
 
     const details =
       pagePlayerResponse?.videoDetails || innertubePR?.videoDetails || {};
@@ -326,6 +664,78 @@
     };
   }
 
+  /**
+   * Unified multi-platform entry point for video metadata + timestamped CC transcript
+   */
+  async function getVideoDataAndTranscript(targetVideoId) {
+    const platform = getPlatform();
+
+    if (
+      platform === 'youtube' ||
+      (!targetVideoId.startsWith('coursera_') &&
+        !targetVideoId.startsWith('edx_') &&
+        /^[a-zA-Z0-9_-]{11}$/.test(targetVideoId))
+    ) {
+      return getYouTubeVideoDataAndTranscript(targetVideoId);
+    }
+
+    // Coursera & edX: Wait up to 4.5s for the SPA player to attach <video> tracks or transcript nodes
+    let extracted = null;
+    let video = null;
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+      video = document.querySelector('video.vjs-tech, .rc-VideoPlayer video, .video video, video');
+      if (platform === 'edx') {
+        extracted = await extractEdxTranscript();
+      }
+      if (!extracted && video) {
+        extracted = await extractHtml5VideoTranscript(video);
+      }
+      if (!extracted && platform === 'coursera') {
+        extracted = extractCourseraDomTranscript();
+      }
+      if (extracted && extracted.segments && extracted.segments.length > 0) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 450));
+    }
+
+    const segments = extracted?.segments || [];
+    const lastEnd = segments.length > 0 ? Math.ceil(segments[segments.length - 1].end) : 0;
+    const durationSec =
+      (video && Number.isFinite(video.duration) && video.duration > 0
+        ? Math.round(video.duration)
+        : 0) || lastEnd;
+
+    const cleanTitle = (
+      document.querySelector('h1')?.textContent ||
+      document.title.replace(/\s*[|-]\s*(Coursera|edX).*$/i, '') ||
+      'Course Lecture'
+    )
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const metadata = {
+      videoId: targetVideoId,
+      title: cleanTitle,
+      author: platform === 'coursera' ? 'Coursera Course' : 'edX Course',
+      shortDescription: `Educational lecture on ${platform === 'coursera' ? 'Coursera' : 'edX'}`,
+      lengthSeconds: durationSec,
+      category: 'Education',
+      isLiveContent: false,
+      keywords: [platform, 'lecture', 'education']
+    };
+
+    return {
+      metadata,
+      hasCaptions: segments.length > 0,
+      languageCode: extracted?.languageCode || 'en',
+      languageName: extracted?.languageName || 'en',
+      isAutoGenerated: false,
+      segments
+    };
+  }
+
   // Listen for requests from isolated content script
   window.addEventListener('YT_TRUTH_FETCH_VIDEO_DATA', async (event) => {
     const detail = event.detail || {};
@@ -354,22 +764,45 @@
     }
   });
 
-  // Listen for seek requests from isolated content script
+  // Listen for seek requests from isolated content script across YouTube, Coursera, and edX
   window.addEventListener('YT_TRUTH_SEEK_TO', (event) => {
     const seconds = Number(event.detail?.seconds);
     if (Number.isNaN(seconds)) return;
-    const isShorts = window.location.pathname.startsWith('/shorts/');
-    const player = isShorts
-      ? document.getElementById('shorts-player') || document.getElementById('movie_player')
-      : document.getElementById('movie_player');
-    if (player && typeof player.seekTo === 'function') {
-      player.seekTo(seconds, true);
-      return;
+    const platform = getPlatform();
+
+    if (platform === 'youtube') {
+      const isShorts = window.location.pathname.startsWith('/shorts/');
+      const player = isShorts
+        ? document.getElementById('shorts-player') || document.getElementById('movie_player')
+        : document.getElementById('movie_player');
+      if (player && typeof player.seekTo === 'function') {
+        player.seekTo(seconds, true);
+        return;
+      }
     }
+
+    if (platform === 'edx' && window.jQuery) {
+      try {
+        const state = window.jQuery('.video').data('video-player-state');
+        if (state?.videoPlayer && typeof state.videoPlayer.onSlideSeek === 'function') {
+          state.videoPlayer.onSlideSeek({ type: 'onSlideSeek', time: seconds });
+          return;
+        }
+        if (state?.videoPlayer?.player && typeof state.videoPlayer.player.seekTo === 'function') {
+          state.videoPlayer.player.seekTo(seconds, true);
+          return;
+        }
+      } catch {
+        // fallback to HTML5 <video> below
+      }
+    }
+
     const video =
       document.querySelector('#shorts-player video.html5-main-video') ||
       document.querySelector('ytd-reel-video-renderer[is-active] video') ||
-      document.querySelector('video.html5-main-video');
+      document.querySelector('video.html5-main-video') ||
+      document.querySelector('video.vjs-tech') ||
+      document.querySelector('video');
     if (video) {
       video.currentTime = seconds;
     }

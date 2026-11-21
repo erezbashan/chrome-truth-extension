@@ -10,7 +10,7 @@
 (() => {
   if (window.__ytTruthContentInitialized) return;
   window.__ytTruthContentInitialized = true;
-  console.warn('[Truth Bar for YouTube] Content script initialized (v1.0.19)');
+  console.warn('[Truth Bar] Content script initialized (v1.0.20)');
 
   const STATE = {
     videoId: null,
@@ -34,7 +34,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.19',
+      version: '1.0.20',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -139,7 +139,13 @@
     );
   }
 
+  function getAdapter() {
+    return window.__ytTruthPlatformAdapter;
+  }
+
   function isShortsPage() {
+    const adapter = getAdapter();
+    if (adapter) return adapter.isShortsPage();
     try {
       return window.location.pathname.startsWith('/shorts/');
     } catch {
@@ -148,6 +154,8 @@
   }
 
   function getWatchVideoId() {
+    const adapter = getAdapter();
+    if (adapter) return adapter.getWatchVideoId();
     try {
       const url = new URL(window.location.href);
       if (url.pathname === '/watch') {
@@ -163,6 +171,12 @@
     }
   }
 
+  function getCurrentTimeSec() {
+    const adapter = getAdapter();
+    if (adapter) return adapter.getCurrentPlaybackTime(videoEl);
+    return videoEl ? videoEl.currentTime || 0 : 0;
+  }
+
   function formatTime(sec) {
     const s = Math.max(0, Math.floor(sec || 0));
     const hrs = Math.floor(s / 3600);
@@ -175,8 +189,8 @@
   }
 
   /**
-   * Ensure #yt-truth-root is mounted directly above the YouTube video player
-   * in Default, Theater, and Fullscreen modes.
+   * Ensure #yt-truth-root is mounted directly above the active video player
+   * across YouTube (Default, Theater, Fullscreen, Shorts), Coursera, and edX.
    */
   function ensureRootMounted() {
     if (!getWatchVideoId()) {
@@ -190,87 +204,10 @@
       rootEl = createRootDom();
     }
 
-    const fsEl = document.fullscreenElement;
-    if (fsEl) {
-      rootEl.classList.remove('yt-truth-shorts');
-      rootEl.classList.add('yt-truth-fullscreen');
-      if (rootEl.parentNode !== fsEl) {
-        fsEl.prepend(rootEl);
-      }
-      return rootEl;
+    const adapter = getAdapter();
+    if (adapter) {
+      return adapter.mountRootAbovePlayer(rootEl);
     }
-
-    rootEl.classList.remove('yt-truth-fullscreen');
-
-    // YouTube Shorts page mode (/shorts/<videoId>)
-    if (isShortsPage()) {
-      rootEl.classList.add('yt-truth-shorts');
-      const shortsHost =
-        document.querySelector('ytd-shorts') ||
-        document.getElementById('page-manager') ||
-        document.body;
-      if (shortsHost && rootEl.parentNode !== shortsHost) {
-        shortsHost.prepend(rootEl);
-      }
-      return rootEl;
-    }
-
-    rootEl.classList.remove('yt-truth-shorts');
-
-    const watchFlexy = document.querySelector('ytd-watch-flexy');
-    const isTheater = Boolean(watchFlexy && watchFlexy.hasAttribute('theater'));
-    const moviePlayer = document.getElementById('movie_player');
-
-    const fullBleed =
-      document.getElementById('full-bleed-container') ||
-      document.getElementById('player-full-bleed-container') ||
-      document.getElementById('player-theater-container');
-
-    // Use full-bleed container only when theater mode is active OR movie_player is physically inside fullBleed
-    if (
-      fullBleed &&
-      fullBleed.parentNode &&
-      fullBleed.getBoundingClientRect().height > 40 &&
-      (isTheater || (moviePlayer && fullBleed.contains(moviePlayer)))
-    ) {
-      if (rootEl.nextSibling !== fullBleed) {
-        fullBleed.parentNode.insertBefore(rootEl, fullBleed);
-      }
-      if (rootEl.getBoundingClientRect().height > 0) {
-        return rootEl;
-      }
-    }
-
-    // Standard mode: insert right above #player inside #primary-inner
-    const candidateEls = [
-      document.querySelector('#primary-inner > #player'),
-      document.getElementById('player-container-outer'),
-      document.getElementById('player')
-    ].filter(Boolean);
-
-    const visiblePlayerEl =
-      candidateEls.find((el) => el.getBoundingClientRect().height > 40) ||
-      candidateEls[0];
-
-    if (visiblePlayerEl && visiblePlayerEl.parentNode) {
-      if (rootEl.nextSibling !== visiblePlayerEl) {
-        visiblePlayerEl.parentNode.insertBefore(rootEl, visiblePlayerEl);
-      }
-      if (rootEl.getBoundingClientRect().height > 0) {
-        return rootEl;
-      }
-    }
-
-    // Final safety fallback: if YouTube's DOM layout hides all standard containers (height === 0),
-    // dock the Truth Bar fixed at the top of the viewport so it is guaranteed to be visible.
-    if (document.body && (document.getElementById('movie_player') || document.querySelector('video'))) {
-      rootEl.classList.add('yt-truth-shorts');
-      if (rootEl.parentNode !== document.body) {
-        document.body.prepend(rootEl);
-      }
-      return rootEl;
-    }
-
     return null;
   }
 
@@ -305,7 +242,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.19</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.20</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>
@@ -522,10 +459,14 @@
       const includeCtx = Boolean(
         container.querySelector('#yt-truth-fb-include-ctx')?.checked
       );
-      const version = STATE.settings?.version || '1.0.11';
+      const version = STATE.settings?.version || '1.0.20';
       const videoTitle = STATE.metadata?.title || document.title.replace(/ - YouTube$/, '');
-      const currentTimeSec = videoEl ? Math.floor(videoEl.currentTime || 0) : 0;
-      const videoUrl = STATE.videoId
+      const currentTimeSec = Math.floor(getCurrentTimeSec());
+      const isYtId =
+        STATE.videoId &&
+        !STATE.videoId.startsWith('coursera_') &&
+        !STATE.videoId.startsWith('edx_');
+      const videoUrl = isYtId
         ? isShortsPage()
           ? `https://www.youtube.com/shorts/${STATE.videoId}`
           : `https://www.youtube.com/watch?v=${STATE.videoId}&t=${currentTimeSec}s`
@@ -805,11 +746,17 @@
     const feedbackBoxEl = mounted.querySelector('#yt-truth-feedback-box');
     const pauseBtn = mounted.querySelector('#yt-truth-pause-btn');
 
-    const currentTime = videoEl ? videoEl.currentTime || 0 : 0;
+    const currentTime = getCurrentTimeSec();
+    const lastSegEnd =
+      STATE.segments && STATE.segments.length > 0
+        ? STATE.segments[STATE.segments.length - 1].end
+        : 0;
     const duration =
       (videoEl && videoEl.duration && Number.isFinite(videoEl.duration)
         ? videoEl.duration
-        : STATE.metadata?.lengthSeconds) || 0;
+        : STATE.metadata?.lengthSeconds) ||
+      lastSegEnd ||
+      0;
 
     // Update playhead on timeline
     const playheadEl = mounted.querySelector('#yt-truth-timeline-playhead');
@@ -1272,7 +1219,7 @@
       return buildOnDemandWindow(0);
     }
 
-    const currentTime = videoEl ? videoEl.currentTime || 0 : 0;
+    const currentTime = getCurrentTimeSec();
     const lookahead = STATE.settings.lookaheadBufferSec || 60;
 
     const covering = findCoveringWindow(currentTime);
@@ -1410,12 +1357,10 @@
   }
 
   function bindVideoListeners() {
-    const v = isShortsPage()
-      ? document.querySelector('#shorts-player video.html5-main-video') ||
-        document.querySelector('ytd-reel-video-renderer[is-active] video') ||
-        document.querySelector('video.html5-main-video')
-      : document.querySelector('#movie_player video.html5-main-video') ||
-        document.querySelector('video.html5-main-video');
+    const adapter = getAdapter();
+    const v = adapter
+      ? adapter.findActiveVideoElement()
+      : document.querySelector('video.html5-main-video, video');
     if (v && v !== videoEl) {
       videoEl = v;
       videoEl.addEventListener('timeupdate', () => {
@@ -1474,18 +1419,26 @@
       scheduleRender();
     }
 
-    // 2. Fetch video metadata + Closed Captions (CC) via Service Worker first, with Page Bridge fallback
+    // 2. Fetch video metadata + Closed Captions (CC) via Service Worker for YouTube IDs, with Page Bridge for Coursera/edX/fallback
     let transcriptData = null;
-    try {
-      const swResp = await chrome.runtime.sendMessage({
-        type: 'FETCH_VIDEO_TRANSCRIPT',
-        videoId
-      });
-      if (swResp?.ok && swResp.data?.hasCaptions && swResp.data.segments?.length > 0) {
-        transcriptData = swResp.data;
+    const isYouTubeId =
+      videoId &&
+      !videoId.startsWith('coursera_') &&
+      !videoId.startsWith('edx_') &&
+      /^[a-zA-Z0-9_-]{8,15}$/.test(videoId);
+
+    if (isYouTubeId) {
+      try {
+        const swResp = await chrome.runtime.sendMessage({
+          type: 'FETCH_VIDEO_TRANSCRIPT',
+          videoId
+        });
+        if (swResp?.ok && swResp.data?.hasCaptions && swResp.data.segments?.length > 0) {
+          transcriptData = swResp.data;
+        }
+      } catch {
+        // fallback to page bridge below
       }
-    } catch {
-      // fallback to page bridge below
     }
 
     if (runToken !== currentRunToken) return;
@@ -1557,10 +1510,27 @@
     }
   }
 
-  // Listen for YouTube SPA navigation events and fullscreen/theater transitions
+  // Listen for SPA navigation events (YouTube, Coursera, edX) and fullscreen/theater transitions
   window.addEventListener('yt-navigate-finish', () => {
     setTimeout(checkCurrentPage, 150);
   });
+  window.addEventListener('popstate', () => {
+    setTimeout(checkCurrentPage, 250);
+  });
+
+  // Periodic sync for iframe-wrapped players (e.g. edX YouTube-embed wrapper without local <video>)
+  setInterval(() => {
+    if (!STATE.videoId) return;
+    bindVideoListeners();
+    if (!videoEl) {
+      scheduleRender();
+      if (!STATE.isAnalyzing && !STATE.isPaused && STATE.hasCaptions && STATE.isVideoRelevant) {
+        if (getNeededWindowAtCurrentTime()) {
+          maybeAnalyzeCurrentWindow(currentRunToken);
+        }
+      }
+    }
+  }, 600);
 
   document.addEventListener('fullscreenchange', () => {
     scheduleRender();

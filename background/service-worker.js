@@ -22,26 +22,31 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     });
   }
 
-  // Automatically inject into any already-open YouTube tabs so users don't have to refresh after install
+  // Automatically inject into any already-open YouTube, Coursera, or edX tabs so users don't have to refresh after install
   try {
-    const ytTabs = await chrome.tabs.query({
-      url: ['https://www.youtube.com/*', 'https://m.youtube.com/*']
+    const supportedTabs = await chrome.tabs.query({
+      url: [
+        'https://www.youtube.com/*',
+        'https://m.youtube.com/*',
+        'https://*.coursera.org/*',
+        'https://*.edx.org/*'
+      ]
     });
-    for (const tab of ytTabs) {
+    for (const tab of supportedTabs) {
       if (!tab.id) continue;
       try {
         await chrome.scripting.insertCSS({
-          target: { tabId: tab.id },
+          target: { tabId: tab.id, allFrames: true },
           files: ['content/content.css']
         });
         await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
+          target: { tabId: tab.id, allFrames: true },
           files: ['content/page-bridge.js'],
           world: 'MAIN'
         });
         await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content/content.js'],
+          target: { tabId: tab.id, allFrames: true },
+          files: ['content/platform-adapter.js', 'content/content.js'],
           world: 'ISOLATED'
         });
       } catch {
@@ -129,27 +134,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
           }
           const url = activeTab.url || '';
-          if (url && !/^https:\/\/([a-z0-9-]+\.)?youtube\.com\//i.test(url)) {
+          if (
+            url &&
+            !/^https:\/\/([a-z0-9-]+\.)?(youtube\.com|coursera\.org|edx\.org)\//i.test(url)
+          ) {
             sendResponse({
               ok: false,
-              reason: 'NOT_YOUTUBE',
-              error: 'Active tab is not a YouTube page.'
+              reason: 'NOT_SUPPORTED_SITE',
+              error: 'Active tab is not a YouTube, Coursera, or edX page.'
             });
             break;
           }
           try {
             await chrome.scripting.insertCSS({
-              target: { tabId: activeTab.id },
+              target: { tabId: activeTab.id, allFrames: true },
               files: ['content/content.css']
             });
             await chrome.scripting.executeScript({
-              target: { tabId: activeTab.id },
+              target: { tabId: activeTab.id, allFrames: true },
               files: ['content/page-bridge.js'],
               world: 'MAIN'
             });
             await chrome.scripting.executeScript({
-              target: { tabId: activeTab.id },
-              files: ['content/content.js'],
+              target: { tabId: activeTab.id, allFrames: true },
+              files: ['content/platform-adapter.js', 'content/content.js'],
               world: 'ISOLATED'
             });
             sendResponse({ ok: true, injected: true });

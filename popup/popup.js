@@ -12,7 +12,7 @@ const fbGmailBtn = document.getElementById('fb-gmail-btn');
 const fbMailtoBtn = document.getElementById('fb-mailto-btn');
 const tabStatusBanner = document.getElementById('tab-status-banner');
 
-let currentVersion = '1.0.19';
+let currentVersion = '1.0.20';
 
 async function checkAndInjectActiveTab() {
   if (!tabStatusBanner) return;
@@ -22,7 +22,7 @@ async function checkAndInjectActiveTab() {
       tabStatusBanner.style.display = 'block';
       tabStatusBanner.style.borderColor = 'rgba(34, 197, 94, 0.35)';
       tabStatusBanner.style.color = '#86efac';
-      tabStatusBanner.textContent = '✓ Active on current YouTube tab.';
+      tabStatusBanner.textContent = '✓ Active on current video tab (YouTube / Coursera / edX).';
     } else if (res?.isPolicyBlocked) {
       tabStatusBanner.style.display = 'block';
       tabStatusBanner.style.borderColor = 'rgba(239, 68, 68, 0.5)';

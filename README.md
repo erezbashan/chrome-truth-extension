@@ -1,6 +1,6 @@
-# Truth Bar for YouTube — Live AI Fact Checker
+# Truth Bar for YouTube, Coursera & edX — Live AI Fact Checker
 
-A Chrome Extension that automatically fact-checks YouTube videos in real time as you watch, using the video's Closed Captions (CC) and Gemini with Google Search Grounding.
+A Chrome Extension that automatically fact-checks **YouTube** (`/watch` and `/shorts`), **Coursera**, and **edX** lecture videos in real time as you watch, using the video's Closed Captions (CC) / transcripts and Gemini with Google Search Grounding.
 
 ## Quick Setup (Takes ~60 Seconds)
 

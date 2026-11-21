@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Truth Bar for YouTube — Live AI Fact Checker",
-  "version": "1.0.19",
-  "description": "Automatic, real-time fact-checking for YouTube videos using Closed Captions and Gemini with Google Search Grounding.",
+  "name": "Truth Bar for YouTube, Coursera & edX — Live AI Fact Checker",
+  "version": "1.0.20",
+  "description": "Automatic, real-time fact-checking for YouTube, Coursera, and edX videos using Closed Captions and Gemini with Google Search Grounding.",
   "permissions": [
     "storage",
     "scripting"
   ],
   "host_permissions": [
     "https://generativelanguage.googleapis.com/*",
-    "https://*.youtube.com/*"
+    "https://*.youtube.com/*",
+    "https://*.coursera.org/*",
+    "https://*.edx.org/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js",
@@ -33,26 +35,33 @@
     {
       "matches": [
         "https://www.youtube.com/*",
-        "https://m.youtube.com/*"
+        "https://m.youtube.com/*",
+        "https://*.coursera.org/*",
+        "https://*.edx.org/*"
       ],
       "js": [
         "content/page-bridge.js"
       ],
       "run_at": "document_idle",
+      "all_frames": true,
       "world": "MAIN"
     },
     {
       "matches": [
         "https://www.youtube.com/*",
-        "https://m.youtube.com/*"
+        "https://m.youtube.com/*",
+        "https://*.coursera.org/*",
+        "https://*.edx.org/*"
       ],
       "js": [
+        "content/platform-adapter.js",
         "content/content.js"
       ],
       "css": [
         "content/content.css"
       ],
       "run_at": "document_idle",
+      "all_frames": true,
       "world": "ISOLATED"
     }
   ]
