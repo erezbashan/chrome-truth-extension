@@ -11,7 +11,7 @@ const feedbackText = document.getElementById('feedback-text');
 const fbGmailBtn = document.getElementById('fb-gmail-btn');
 const fbMailtoBtn = document.getElementById('fb-mailto-btn');
 
-let currentVersion = '1.0.16';
+let currentVersion = '1.0.17';
 
 async function loadSettings() {
   const resp = await chrome.runtime.sendMessage({ type: 'GET_CONFIG_AND_CACHE' });

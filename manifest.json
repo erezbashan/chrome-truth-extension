@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Truth Bar for YouTube — Live AI Fact Checker",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Automatic, real-time fact-checking for YouTube videos using Closed Captions and Gemini with Google Search Grounding.",
   "permissions": [
-    "storage"
+    "storage",
+    "scripting"
   ],
   "host_permissions": [
     "https://generativelanguage.googleapis.com/*",

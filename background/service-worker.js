@@ -21,6 +21,36 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       }
     });
   }
+
+  // Automatically inject into any already-open YouTube tabs so users don't have to refresh after install
+  try {
+    const ytTabs = await chrome.tabs.query({
+      url: ['https://www.youtube.com/*', 'https://m.youtube.com/*']
+    });
+    for (const tab of ytTabs) {
+      if (!tab.id) continue;
+      try {
+        await chrome.scripting.insertCSS({
+          target: { tabId: tab.id },
+          files: ['content/content.css']
+        });
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content/page-bridge.js'],
+          world: 'MAIN'
+        });
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content/content.js'],
+          world: 'ISOLATED'
+        });
+      } catch {
+        // Ignore restricted/discarded tabs
+      }
+    }
+  } catch {
+    // Ignore tab query errors
+  }
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
