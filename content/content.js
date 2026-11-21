@@ -10,7 +10,7 @@
 (() => {
   if (window.__ytTruthContentInitialized) return;
   window.__ytTruthContentInitialized = true;
-  console.info('[Truth Bar for YouTube] Content script initialized (v1.0.18)');
+  console.warn('[Truth Bar for YouTube] Content script initialized (v1.0.19)');
 
   const STATE = {
     videoId: null,
@@ -34,7 +34,7 @@
     activeFilter: 'ALL', // 'ALL' | 'FALSE' | 'QUESTIONABLE' | 'TRUE'
     activeClaimId: null,
     settings: {
-      version: '1.0.18',
+      version: '1.0.19',
       hasApiKey: false,
       maskedKey: '',
       geminiModel: 'gemini-3.8-flash',
@@ -261,6 +261,16 @@
       }
     }
 
+    // Final safety fallback: if YouTube's DOM layout hides all standard containers (height === 0),
+    // dock the Truth Bar fixed at the top of the viewport so it is guaranteed to be visible.
+    if (document.body && (document.getElementById('movie_player') || document.querySelector('video'))) {
+      rootEl.classList.add('yt-truth-shorts');
+      if (rootEl.parentNode !== document.body) {
+        document.body.prepend(rootEl);
+      }
+      return rootEl;
+    }
+
     return null;
   }
 
@@ -295,7 +305,7 @@
           </div>
 
           <div class="yt-truth-right-section">
-            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.18</span>
+            <span class="yt-truth-version-badge" id="yt-truth-version-badge" title="Extension Build Version">v1.0.19</span>
             <span class="yt-truth-progress-badge" id="yt-truth-progress-badge">
               <span class="yt-truth-spinner" id="yt-truth-spinner"></span>
               <span id="yt-truth-progress-text">Starting</span>

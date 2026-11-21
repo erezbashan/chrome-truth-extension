@@ -121,6 +121,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
 
+        case 'PING_OR_INJECT_ACTIVE_TAB': {
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          const activeTab = tabs && tabs[0];
+          if (!activeTab || !activeTab.id) {
+            sendResponse({ ok: false, reason: 'NO_ACTIVE_TAB', error: 'No active tab found.' });
+            break;
+          }
+          const url = activeTab.url || '';
+          if (url && !/^https:\/\/([a-z0-9-]+\.)?youtube\.com\//i.test(url)) {
+            sendResponse({
+              ok: false,
+              reason: 'NOT_YOUTUBE',
+              error: 'Active tab is not a YouTube page.'
+            });
+            break;
+          }
+          try {
+            await chrome.scripting.insertCSS({
+              target: { tabId: activeTab.id },
+              files: ['content/content.css']
+            });
+            await chrome.scripting.executeScript({
+              target: { tabId: activeTab.id },
+              files: ['content/page-bridge.js'],
+              world: 'MAIN'
+            });
+            await chrome.scripting.executeScript({
+              target: { tabId: activeTab.id },
+              files: ['content/content.js'],
+              world: 'ISOLATED'
+            });
+            sendResponse({ ok: true, injected: true });
+          } catch (injectErr) {
+            const msg = injectErr?.message || String(injectErr);
+            const isPolicyBlocked = /ExtensionsSettings|enterprise policy|cannot be scripted due to/i.test(
+              msg
+            );
+            sendResponse({
+              ok: false,
+              reason: isPolicyBlocked ? 'ENTERPRISE_POLICY_BLOCKED' : 'INJECT_ERROR',
+              isPolicyBlocked,
+              error: msg
+            });
+          }
+          break;
+        }
+
         default:
           sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
       }

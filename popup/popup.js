@@ -10,8 +10,35 @@ const feedbackType = document.getElementById('feedback-type');
 const feedbackText = document.getElementById('feedback-text');
 const fbGmailBtn = document.getElementById('fb-gmail-btn');
 const fbMailtoBtn = document.getElementById('fb-mailto-btn');
+const tabStatusBanner = document.getElementById('tab-status-banner');
 
-let currentVersion = '1.0.18';
+let currentVersion = '1.0.19';
+
+async function checkAndInjectActiveTab() {
+  if (!tabStatusBanner) return;
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'PING_OR_INJECT_ACTIVE_TAB' });
+    if (res?.ok) {
+      tabStatusBanner.style.display = 'block';
+      tabStatusBanner.style.borderColor = 'rgba(34, 197, 94, 0.35)';
+      tabStatusBanner.style.color = '#86efac';
+      tabStatusBanner.textContent = '✓ Active on current YouTube tab.';
+    } else if (res?.isPolicyBlocked) {
+      tabStatusBanner.style.display = 'block';
+      tabStatusBanner.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+      tabStatusBanner.style.color = '#fca5a5';
+      tabStatusBanner.textContent =
+        '🏢 Blocked by Corporate Chrome Policy (ExtensionSettings) on youtube.com. Your company admin blocks third-party extensions on YouTube/Google domains. Try a personal/unmanaged browser (or personal Chrome without corp management).';
+    } else if (res?.reason === 'INJECT_ERROR' && res?.error) {
+      tabStatusBanner.style.display = 'block';
+      tabStatusBanner.style.borderColor = 'rgba(245, 158, 11, 0.45)';
+      tabStatusBanner.style.color = '#fde68a';
+      tabStatusBanner.textContent = `⚠ Cannot access this tab: ${res.error}`;
+    }
+  } catch {
+    // Ignore
+  }
+}
 
 async function loadSettings() {
   const resp = await chrome.runtime.sendMessage({ type: 'GET_CONFIG_AND_CACHE' });
@@ -59,6 +86,7 @@ saveBtn.addEventListener('click', async () => {
   if (resp?.ok) {
     apiKeyInput.value = '';
     await loadSettings();
+checkAndInjectActiveTab();
     saveToast.classList.remove('hidden');
     setTimeout(() => {
       saveToast.classList.add('hidden');
@@ -95,3 +123,4 @@ fbMailtoBtn?.addEventListener('click', () => {
 });
 
 loadSettings();
+checkAndInjectActiveTab();
