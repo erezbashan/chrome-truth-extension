@@ -219,7 +219,7 @@
 
     rootEl.classList.remove('yt-truth-fullscreen');
 
-    // 2. Coursera & edX (and YouTube /embed/ iframes)
+    // 2. Coursera & edX
     if (platform === 'coursera' || platform === 'edx') {
       rootEl.classList.remove('yt-truth-shorts');
       const selectors =
@@ -242,26 +242,27 @@
       const containers = selectors
         .map((sel) => document.querySelector(sel))
         .filter(Boolean);
-      const visibleContainer =
-        containers.find((el) => el.getBoundingClientRect().height > 40) || containers[0];
+      const visibleContainer = containers.find(
+        (el) => el.getBoundingClientRect().height > 100 && el.getBoundingClientRect().width > 150
+      );
 
       if (visibleContainer && visibleContainer.parentNode) {
         if (rootEl.nextSibling !== visibleContainer) {
           visibleContainer.parentNode.insertBefore(rootEl, visibleContainer);
         }
-        if (rootEl.getBoundingClientRect().height > 0) {
+        if (rootEl.getBoundingClientRect().height >= 20) {
           return rootEl;
         }
       }
 
       const video = findActiveVideoElement();
-      if (video) {
+      if (video && video.getBoundingClientRect().height > 100) {
         const host = video.closest('div') || video.parentElement;
         if (host && host.parentNode) {
           if (rootEl.nextSibling !== host) {
             host.parentNode.insertBefore(rootEl, host);
           }
-          if (rootEl.getBoundingClientRect().height > 0) {
+          if (rootEl.getBoundingClientRect().height >= 20) {
             return rootEl;
           }
         }
@@ -292,26 +293,23 @@
 
     rootEl.classList.remove('yt-truth-shorts');
 
-    // 4. YouTube /watch (Theater & Default modes)
-    const watchFlexy = document.querySelector('ytd-watch-flexy');
-    const isTheater = Boolean(watchFlexy && watchFlexy.hasAttribute('theater'));
-    const moviePlayer = document.getElementById('movie_player');
-
+    // 4. YouTube /watch (Theater, Full-Bleed, and Default modes)
     const fullBleed =
       document.getElementById('full-bleed-container') ||
       document.getElementById('player-full-bleed-container') ||
       document.getElementById('player-theater-container');
 
+    // Whenever #full-bleed-container is actively hosting the player, its rendered height is > 100px
+    // (when inactive in standard mode, its height is 0px).
     if (
       fullBleed &&
       fullBleed.parentNode &&
-      fullBleed.getBoundingClientRect().height > 40 &&
-      (isTheater || (moviePlayer && fullBleed.contains(moviePlayer)))
+      fullBleed.getBoundingClientRect().height > 100
     ) {
       if (rootEl.nextSibling !== fullBleed) {
         fullBleed.parentNode.insertBefore(rootEl, fullBleed);
       }
-      if (rootEl.getBoundingClientRect().height > 0) {
+      if (rootEl.getBoundingClientRect().height >= 20) {
         return rootEl;
       }
     }
@@ -319,23 +317,26 @@
     const candidateEls = [
       document.querySelector('#primary-inner > #player'),
       document.getElementById('player-container-outer'),
-      document.getElementById('player')
+      document.getElementById('player'),
+      document.querySelector('ytd-player#ytd-player')
     ].filter(Boolean);
 
-    const visiblePlayerEl =
-      candidateEls.find((el) => el.getBoundingClientRect().height > 40) ||
-      candidateEls[0];
+    // IMPORTANT: Only pick a container that is actually visible (> 100px tall). Never fall back to a 0px-height candidateEls[0].
+    const visiblePlayerEl = candidateEls.find(
+      (el) => el.getBoundingClientRect().height > 100 && el.getBoundingClientRect().width > 150
+    );
 
     if (visiblePlayerEl && visiblePlayerEl.parentNode) {
       if (rootEl.nextSibling !== visiblePlayerEl) {
         visiblePlayerEl.parentNode.insertBefore(rootEl, visiblePlayerEl);
       }
-      if (rootEl.getBoundingClientRect().height > 0) {
+      if (rootEl.getBoundingClientRect().height >= 20) {
         return rootEl;
       }
     }
 
-    if (document.body && (document.getElementById('movie_player') || document.querySelector('video'))) {
+    // Guaranteed visible fallback: dock fixed at the top of the viewport whenever inline containers are not yet laid out or hidden
+    if (document.body) {
       rootEl.classList.add('yt-truth-shorts');
       if (rootEl.parentNode !== document.body) {
         document.body.prepend(rootEl);

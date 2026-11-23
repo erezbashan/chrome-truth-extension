@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Truth Bar for YouTube, Coursera & edX — Live AI Fact Checker",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "Automatic, real-time fact-checking for YouTube, Coursera, and edX videos using Closed Captions and Gemini with Google Search Grounding.",
   "permissions": [
     "storage",

@@ -830,7 +830,7 @@ async function handleAnalyzeChunk(payload, tabId) {
       });
     } catch (searchErr) {
       // Graceful fallback: keep Step 1 verdict if search quota or network fails
-      console.warn('Step 2 Search Grounding fallback to Step 1:', searchErr);
+      console.info('Step 2 Search Grounding fallback to Step 1:', searchErr);
       chunkRecord.claims = chunkRecord.claims.map((claim) => ({
         ...claim,
         verifyingWithSearch: false

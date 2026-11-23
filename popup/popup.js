@@ -12,7 +12,7 @@ const fbGmailBtn = document.getElementById('fb-gmail-btn');
 const fbMailtoBtn = document.getElementById('fb-mailto-btn');
 const tabStatusBanner = document.getElementById('tab-status-banner');
 
-let currentVersion = '1.0.20';
+let currentVersion = '1.0.21';
 
 async function checkAndInjectActiveTab() {
   if (!tabStatusBanner) return;
